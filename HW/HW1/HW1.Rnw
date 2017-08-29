@@ -25,7 +25,7 @@
   \item The prior distribution whose MAP corresponds to the ridge estimator is 
   \[ \beta \sim N(0, \lambda^{-1} \mathrm{I}_p) \]
 
-State how $\lambda$ relates to this prior.
+In this prior, $\lambda$ controls the amount of shrinkage. The variance of the prior is solely dependant on $\lambda$ so as it increase, the variance decreases and becomes tighter around the mean(in this case, $0$).\\
 
   \item The prior distributions whose MAP corresponds to the LASSO estimator are
   \begin{align*}
@@ -33,7 +33,8 @@ State how $\lambda$ relates to this prior.
   p(\sigma^{2}) &\propto \frac{1}{\sigma^{2}}
   \end{align*}
   
-State how $\lambda$ relates to this prior.
+In this prior, $\lambda$ also controls the amount of shrinkage, but it is not as straight forward as the cases before. Here we have a Laplace prior with variance $2\frac{\sigma^2}{\lambda^2}$. So as $\lambda$ increases the variance will go to $0$. So $\lambda$ controls again the shrinkage, but in this case $\sigma^2$ will also affect the how much $\lambda$ influences shrinkage.\\
+
   \item The elastic net estimator is 
   \begin{align*}
   p(\beta | \sigma^{2}) &\propto exp \{ -\frac{1}{2\sigma^{2}} (\lambda_1 ||\beta||_1 + \lambda_2 ||\beta||_2^2) \} \\

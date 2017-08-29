@@ -1,0 +1,55 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb,mathrsfs,fancyhdr,syntonly,lastpage,hyperref,enumitem,graphicx}
+
+\hypersetup{colorlinks=true,urlcolor=black}
+
+\topmargin      -1.5cm   % read Lamport p.163
+\oddsidemargin  -0.04cm  % read Lamport p.163
+\evensidemargin -0.04cm  % same as oddsidemargin but for left-hand pages
+\textwidth      16.59cm
+\textheight     23.94cm
+\parskip         7.2pt   % sets spacing between paragraphs
+\parindent         0pt   % sets leading space for paragraphs
+\pagestyle{empty}        % Uncomment if don't want page numbers
+\pagestyle{fancyplain}
+
+
+\begin{document}
+\lhead{Homework 1}
+\chead{STAT 615 - Advanced Bayesian Methods}
+\rhead{Nehemias Ulloa}
+
+\begin{enumerate}
+\item Assume $y\sim N(X\beta, s^2\mathrm{I})$ where $X$ is $n\times p$. 
+  \begin{enumerate}
+  \item The prior distribution whose MAP corresponds to the ridge estimator is 
+  \[ \beta \sim N(0, \lambda^{-1} \mathrm{I}_p) \]
+
+State how $\lambda$ relates to this prior.
+
+  \item The prior distributions whose MAP corresponds to the LASSO estimator are
+  \begin{align*}
+  p(\beta | \sigma^{2}) &\propto \displaystyle\prod_{j=1}^{p} \frac{\lambda}{2\sqrt{\sigma^{2}}} e^{-\lambda |\beta_j| / \sqrt{\sigma^{2}}} \\
+  p(\sigma^{2}) &\propto \frac{1}{\sigma^{2}}
+  \end{align*}
+  
+State how $\lambda$ relates to this prior.
+  \item The elastic net estimator is 
+  \begin{align*}
+  p(\beta | \sigma^{2}) &\propto exp \{ -\frac{1}{2\sigma^{2}} (\lambda_1 ||\beta||_1 + \lambda_2 ||\beta||_2^2) \} \\
+  p(\sigma^{2}) &\propto \frac{1}{\sigma^{2}}
+  \end{align*}
+
+The $\lambda$ parameters control the blend between a Normal and Laplace distribution. When $\lambda_2 > \lambda_1$, the prior takes more of a form of a normal distribution which corresponds to the prior for the ridge estimator and when $\lambda_1 > \lambda_2$, the prior takes more of a form of a Laplace distribution which corresponds to the prior for the LASSO estimator.
+
+  \end{enumerate}
+  
+
+  
+\end{enumerate}
+
+
+
+
+
+\end{document}

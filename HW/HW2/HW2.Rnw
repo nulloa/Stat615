@@ -23,10 +23,10 @@
 
   \item The Horseshoe distribution can be described as follows:
   \begin{align*}
-  y_{ij} &\overset{ind}{\sim} N(\theta_i, \sigma^2) \\
-  \theta_i &\overset{ind}{\sim} N(0, \lambda_i^2 \tau_i^2) \\
-  \lambda_i &\sim Ca^{+}(0,1) \\
-  \tau_i &\sim Ca^{+}(0,1) \\
+  y_{ig} &\overset{ind}{\sim} N(x_i\theta_g, \sigma^2) \\
+  \theta_g &\overset{ind}{\sim} N(0, \lambda_g^2 \tau^2) \\
+  \lambda_g^2 &\sim Ca^{+}(0,1) \\
+  \tau^2 &\sim Ca^{+}(0,1) \\
   \pi(\sigma) &\propto 1/\sigma
   \end{align*}
   

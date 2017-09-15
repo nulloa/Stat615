@@ -83,61 +83,204 @@
   
   
   mcmc_horseshoe <- function(n_reps, y, group, initial_values){
+    require("MCMCpack")
+    require("dplyr")
     
-    # Set the initial values
-    lambda <- as.numeric(unlist(initial_values["lambda"]))
-    sigma2 <- as.numeric(initial_values["sigma2"])
-    tau2   <- as.numeric(initial_values["tau2"])
-    theta  <- as.numeric(unlist(initial_values["theta"]))
-    
-    # Setup the storage for posterior sample
-    G <- length(theta) # number of groups
-    keep_theta  <- matrix(rep(NA, n_reps*G), ncol=G, nrow=n_reps)
-    keep_lambda <- matrix(rep(NA, n_reps*G), ncol=G, nrow=n_reps)
+    # Setup the storage for posterior samples
+    G <- length(unlist(initial_values["theta"])) # number of groups
+    keep_theta  <- matrix(NA, ncol=G, nrow=n_reps)
+    keep_lambda <- matrix(NA, ncol=G, nrow=n_reps)
     keep_sigma2 <- rep(NA, n_reps)
     keep_tau2   <- rep(NA, n_reps)
     
+    # Set the initial values
+    lambda20 <- as.numeric(unlist(initial_values["lambda"]))
+    sigma20  <- as.numeric(initial_values["sigma2"])
+    tau20    <- as.numeric(initial_values["tau2"])
+    theta0   <- as.numeric(unlist(initial_values["theta"]))
     
     # Setup summary stats
     tmpdf <- data.frame(y, group)
     n <- length(y)
-    n_g <- tmpdf %>% group_by(group) %>% summarise(n_g = length(y))
+    n_g <- data.frame(tmpdf %>% group_by(group) %>% summarise(n_g = length(y)))
     n_g <- as.numeric(n_g[,2])
-    ybar_g <- tmpdf %>% group_by(group) %>% summarise(ybar_g = mean(y))
+    ybar_g <- data.frame(tmpdf %>% group_by(group) %>% summarise(ybar_g = mean(y)))
     ybar_g <- as.numeric(ybar_g[,2])
     
     for(i in 1:n_reps){
       for(g in 1:G){
+        ##### Sample Theta_g #####
+        sigmaTheta <- ((1/lambda20[g]*tau20) + (n_g[g]/sigma20))^(-1)
+        muTheta    <- sigmaTheta*(ybar_g[g]*n_g[g]/sigma20)
+        theta      <- rnorm(1, muTheta, sigmaTheta)
         
+        ###### Sample Lambda_g^2 with M-H Step #####
+        al <- 1/2
+        bl <- (1/2)*(theta0[g]^2/tau20)
+        lambda2 <- rinvgamma(1, al, bl)
         
-        sigmaTheta <- ((1/lambda[g]^2*tau2^2) + (n_g[g]/sigma2^2))^(-1)
-        muTheta    <- sigmaTheta*(ybar_g[g]*n_g[g]/sigma2^2)
-        theta <- rnorm(1, muTheta, sigmaTheta)
+        # Calc phi
+        targetL <- function(newL, oldL, th_g, t2){
+          tl <- 0.5*(log(oldL) - log(newL)) + 2*(log(1+oldL) - log(1+newL)) + (th_g^2/(2*t2*oldL)) - (th_g^2/(2*t2*newL))
+          return(exp(tl))
+          }
         
+        propL   <- function(newL, oldL, th_g, t2){
+          pl <- 1.5*(log(newL) - log(oldL)) + (th_g^2/(2*t2))/newL - (th_g^2/(2*t2))/oldL
+          return(exp(pl))
+          }
         
-        
+        phiL <- targetL(lambda2, lambda20[g], theta0[g], tau20)*propL(lambda2, lambda20[g], theta0[g], tau20)
+
+        uL <- runif(1,0,1)
+        if(uL > phiL){lambda2 <- lambda20[g]}
         
         # Update Storage
-        keep_lambda[i,g]  <- lambda
+        keep_lambda[i,g]  <- lambda2
         keep_theta[i,g]   <- theta
       }
       
-      tmpd <- data.frame(y, group, theta = keep_theta[i,g][group])
-      SSE <- sum(tmpd %>%group_by(Group) %>%summarise(tmp = (y-theta)^2))
+      
+      ###### Sample Sigma^2 #####
+      tmpd <- data.frame(y, group, theta = theta0[group])
+      SSE <- sum((tmpd$y-tmpd$theta)^2)
       a <- n/2
       b <- 0.5*SSE
-      sigma2 <- 1/rgamma(1,a,b)
+      sigma2 <- rinvgamma(1,a,b)
       
+      ###### Sample Tau^2 with M-H Step #####
+      at <- G/2
+      bt <- (1/2)*(sum(theta0^2/lambda20))
+      tau2 <- rinvgamma(1, at, bt)
+        
+      # Calc phi
+      targetT <- function(newT, oldT, th, lamb, GG){
+        tl <- (GG/2)*(log(oldT) - log(newT)) + 2*(log(1+oldT) - log(1+newT)) - (0.5*sum(th^2/lamb)/newT) + (0.5*sum(th^2/lamb)/oldT)
+        return(exp(tl))
+        }
+        
+      propT <- function(newT, oldT, th, lamb,GG){
+        pl <- (GG/2 + 1)*(log(newT) - log(oldT)) - (0.5*sum(th^2/lamb)/oldT) + (0.5*sum(th^2/lamb)/newT)
+        return(exp(pl))
+        }
+        
+      phiT <- targetT(tau2, tau20, theta0, lambda20, G)*propT(tau2, tau20, theta0, lambda20, G)
+        
+      uT <- runif(1,0,1)
+      if(uT > phiT){tau2 <- tau20}
       
       # Update Storage
       keep_sigma2[i]  <- sigma2
       keep_tau2[i]    <- tau2
+      
+      
+      # Update current values
+      lambda20 <- keep_lambda[i,]
+      theta0   <- keep_theta[i,]
+      sigma20  <- keep_sigma2[i]
+      tau20    <- keep_tau2[i]
     }
   
   
-  
+  return(list(
+    theta  = keep_theta[,],
+    lambda = keep_lambda[,],
+    sigma2 = keep_sigma2,
+    tau2   = keep_tau2
+  ))
   }
+  
+  
   @
+  
+  <<run_model>>=
+  library("dplyr")
+  library("Rcpp")
+  sourceCpp("homework2.cpp")
+
+
+  # Simulate data
+  set.seed(1)
+  G = 100
+  theta = c(rep(0,G-10), rnorm(10,10))
+  trueTheta = theta
+  d = data.frame(group = rep(1:G, each=5))
+  d$theta = theta[d$group]
+  d$y = rnorm(nrow(d), d$theta)
+
+  # Get initial values
+  s <- d %>% group_by(group) %>%
+    summarize(n = n(),
+              mean = mean(y),
+              var  = var(y))
+
+  initial_values = list(
+    lambda = s$var,
+    mu = mean(s$mean), 
+    theta = s$mean, 
+    sigma2 = mean(s$var), 
+    tau2 = var(s$mean))
+  
+  n_reps = 1000
+  HorseshoeRes <- mcmc_horseshoe(n_reps, y = d$y, group = d$group, initial_values = initial_values)
+  
+  @
+  
+  
+  
+ <<plot_theta>>=
+  library(reshape2)
+  library(ggplot2)
+  PostTheta <- data.frame(HorseshoeRes$theta)
+  mTheta <- melt(PostTheta)
+  names(mTheta) <- c("Theta", "Sample")
+  levels(mTheta$Theta) <- sub("X", "", levels(mTheta$Theta))
+  mTheta$trueTheta <- trueTheta[mTheta$Theta]
+  mTheta$Iter <- rep(c(1:n_reps), nlevels(mTheta$Theta))
+
+  ggplot(mTheta, aes(x = Sample)) + geom_histogram() + geom_vline(aes(xintercept = trueTheta), color="red") + facet_wrap(~Theta)
+  
+  ggplot(mTheta, aes(x=Iter, y = Sample)) + geom_line() + facet_wrap(~Theta)
+  
+  mTheta %>%
+    group_by(Theta) %>%
+    summarise(accptprob = length(unique(Sample))/length(Sample))
+  
+  
+  @
+  
+  <<plot_lambda>>=
+  Postlambda <- data.frame(HorseshoeRes$lambda)
+  mlambda <- melt(Postlambda)
+  names(mlambda) <- c("lambda", "Sample")
+  levels(mlambda$lambda) <- sub("X", "", levels(mlambda$lambda))
+  mlambda$Iter <- rep(c(1:n_reps), nlevels(mlambda$lambda))
+  ggplot(mlambda, aes(x = Sample)) + geom_histogram() + facet_wrap(~lambda)
+  ggplot(mlambda, aes(x=Iter, y = Sample)) + geom_line() + facet_wrap(~lambda)
+  
+  
+    mlambda %>%
+    group_by(lambda) %>%
+    summarise(accptprob = length(unique(Sample))/length(Sample))
+  
+  
+  @
+  
+  <<plot_sigma2_tau2>>=
+  library(reshape2)
+  library(ggplot2)
+  
+  ggplot() + geom_histogram(aes(x = HorseshoeRes$sigma2)) + geom_vline(xintercept = as.numeric(initial_values["sigma2"]), color="red")
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = HorseshoeRes$sigma2))
+  
+  ggplot() + geom_histogram(aes(x = HorseshoeRes$tau2))   + geom_vline(xintercept = as.numeric(initial_values["tau2"]), color="red")
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = HorseshoeRes$tau2))
+  
+  # Acceptance probability
+  length(unique(HorseshoeRes$tau2))/length(HorseshoeRes$tau2)
+  @
+  
+  
   
   \end{enumerate}
 \end{enumerate}

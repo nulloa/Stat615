@@ -85,24 +85,57 @@
   mcmc_horseshoe <- function(n_reps, y, group, initial_values){
     
     # Set the initial values
-    lambda  <- initial_values["lambda"]
-    sigma2 <- initial_values["sigma2"]
-    tau2   <- initial_values["tau2"]
-    theta  <- initial_values["theta"]
+    lambda <- as.numeric(unlist(initial_values["lambda"]))
+    sigma2 <- as.numeric(initial_values["sigma2"])
+    tau2   <- as.numeric(initial_values["tau2"])
+    theta  <- as.numeric(unlist(initial_values["theta"]))
     
     # Setup the storage for posterior sample
     G <- length(theta) # number of groups
     keep_theta  <- matrix(rep(NA, n_reps*G), ncol=G, nrow=n_reps)
-    keep_lambda <- rep(NA, n_reps)
+    keep_lambda <- matrix(rep(NA, n_reps*G), ncol=G, nrow=n_reps)
     keep_sigma2 <- rep(NA, n_reps)
     keep_tau2   <- rep(NA, n_reps)
-
     
     
+    # Setup summary stats
+    tmpdf <- data.frame(y, group)
+    n <- length(y)
+    n_g <- tmpdf %>% group_by(group) %>% summarise(n_g = length(y))
+    n_g <- as.numeric(n_g[,2])
+    ybar_g <- tmpdf %>% group_by(group) %>% summarise(ybar_g = mean(y))
+    ybar_g <- as.numeric(ybar_g[,2])
     
-    
-    
-    
+    for(i in 1:n_reps){
+      for(g in 1:G){
+        
+        
+        sigmaTheta <- ((1/lambda[g]^2*tau2^2) + (n_g[g]/sigma2^2))^(-1)
+        muTheta    <- sigmaTheta*(ybar_g[g]*n_g[g]/sigma2^2)
+        theta <- rnorm(1, muTheta, sigmaTheta)
+        
+        
+        
+        
+        # Update Storage
+        keep_lambda[i,g]  <- lambda
+        keep_theta[i,g]   <- theta
+      }
+      
+      tmpd <- data.frame(y, group, theta = keep_theta[i,g][group])
+      SSE <- sum(tmpd %>%group_by(Group) %>%summarise(tmp = (y-theta)^2))
+      a <- n/2
+      b <- 0.5*SSE
+      sigma2 <- 1/rgamma(1,a,b)
+      
+      
+      # Update Storage
+      keep_sigma2[i]  <- sigma2
+      keep_tau2[i]    <- tau2
+    }
+  
+  
+  
   }
   @
   

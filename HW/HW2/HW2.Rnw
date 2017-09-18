@@ -91,8 +91,13 @@
     \tau^2|\cdots \sim IG\bigg(\frac{G}{2}, \sum_{g=1}^{G} \frac{\theta_g^2}{2\lambda_g^2}\bigg)\\
   \end{equation*}
   
+  
+  This model described above I called the Informative Horseshoe since its proposals for $\tau$ and $\lambda_g$ are fairly informative. I also ran a similar model using non-informative proposals for $\tau$ and $\lambda_g$. This will be referred to as the Vague Horseshoe.
+  
+  
   %%%%% Second Part %%%%%
-  \item
+  \item 
+  Here is the samplers coded up in |\verb R|.
   <<Horseshoe_Sampler_setup, echo=TRUE, messages=FALSE>>=
 
   mcmc_horseshoe_inform <- function(n_reps, y, group, initial_values){
@@ -210,7 +215,6 @@
   ))
   }
   
-  
   mcmc_horseshoe_vague <- function(n_reps, y, group, initial_values){
     require("MCMCpack")
     require("dplyr")
@@ -319,7 +323,6 @@
   ))
   }
   
-  
   @
   
   
@@ -327,8 +330,15 @@
   
   %%%%% Third Part %%%%%
   \item
-  Here we set up the data simulation:
-  <<data_setup, echo=true, messages=FALSE>>=
+  For the data simulation, I set up my response and mean parameters like so:
+  \begin{align*}
+  \theta_{1} \cdots \theta_{20} &= 0 \\
+  \theta_{21} \cdots \theta_{25} &\neq 0 \\
+  y &{\sim} N(\theta, I)
+  \end{align*}
+  
+  And in R,
+  <<data_setup, echo=true, messages=FALSE, cache=TRUE>>=
   library("dplyr")
   library("Rcpp")
   sourceCpp("homework2.cpp")
@@ -337,9 +347,9 @@
   # Simulate data
 set.seed(1)
 G = 25
-theta = c(rep(0,G-5), rnorm(5,c(35,10,15,15,20), sd=5))
+theta = c(rep(0,G-5),35,10,15,15,20)
 trueTheta = theta
-d = data.frame(group = rep(1:G, each=10))
+d = data.frame(group = rep(1:G, each=15))
 d$theta = theta[d$group]
 d$y = rnorm(nrow(d), d$theta)
 
@@ -373,7 +383,7 @@ d$y = rnorm(nrow(d), d$theta)
   @
   
   
-  <<run_models, echo=FALSE>>=
+  <<run_models, echo=FALSE, cache=TRUE>>=
   n_reps = 10000
   InformHorseshoeRes <- mcmc_horseshoe_inform(n_reps, y = d$y, group = d$group, initial_values = initial_values)
   
@@ -387,8 +397,8 @@ d$y = rnorm(nrow(d), d$theta)
   @
   
   
-  In this plot we can see the CI of the groups plotted by each model.
- <<plot_theta, messgae=FALSE, echo=FALSE>>=
+  We ran all the models for $\Sexpr{n_reps}$ iterations. The models all ran relatively quickly even though they were coded in |\verbR|. They all preformed well in estimating the $\theta$ parameters. The informative Horseshoe however did not sample the variance parameters very well while the vague Horseshoe model did. In Figure \ref{fig:plot_theta}, the credible intervals of the groups plotted by each model. The intervals when beta is equal to 0 are fairly tight with the point mass prior basically equaling 0 in its samples. When beta is not zero the bands are still fairly tight with the exception of the vague Horseshoe model whose bands are fairly wide due to the nature of vague proposals in it's algorithm.
+ <<plot_theta, messgae=FALSE, echo=FALSE, fig.cap="The credible intervals of the groups plotted by each model. The intervals when beta is equal to 0 are fairly tight with the point mass prior basically equaling 0 in its samples. When beta is not zero the bands are still fairly tight with the exception of the vague Horseshoe model whose bands are fairly wide due to the nature of vague proposals in it's algorithm.">>=
   library(reshape2)
   library(ggplot2)
   # PostTheta <- data.frame(InformHorseshoeRes$theta)
@@ -424,7 +434,7 @@ d$y = rnorm(nrow(d), d$theta)
   ggplot(CITheta, aes(x=q25, xend=q975, y=Group, yend=Group)) +
 facet_grid(~Model) +
 geom_segment() +
-geom_segment(aes(x = TrueTheta, xend = TrueTheta), color="red", size=10) +
+geom_segment(aes(x = TrueTheta, xend = TrueTheta, y=Group, yend=Group), color="red", size=10) +
 # geom_vline(aes(xintercept=TrueTheta), color="red") +
 #coord_cartesian(xlim=c(0,35)) +
 labs(x="CI for Theta") +
@@ -432,7 +442,7 @@ theme_bw()
   
   @
   
-  <<plot_lambda>>=
+  <<plot_lambda, eval=FALSE>>=
   Postlambda <- data.frame(InformHorseshoeRes$lambda)
   mlambda <- melt(Postlambda)
   names(mlambda) <- c("lambda", "Sample")
@@ -450,7 +460,7 @@ theme_bw()
   
   @
   
-  <<plot_sigma2_tau2, echo=FALSE>>=
+  <<plot_sigma2_tau2, echo=FALSE, eval=FALSE>>=
   library(reshape2)
   library(ggplot2)
   

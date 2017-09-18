@@ -19,9 +19,7 @@
 \chead{STAT 615 - Advanced Bayesian Methods}
 \rhead{Nehemias Ulloa}
 
-\begin{enumerate}
-
-  \item The Horseshoe model can be described as follows:
+  The Horseshoe model can be described as follows:
   \begin{align*}
   y_{ig} &\overset{ind}{\sim} N(x_i\theta_g, \sigma^2) \\
   \theta_g &\overset{ind}{\sim} N(0, \lambda_g^2 \tau^2) \\
@@ -30,8 +28,8 @@
   \pi(\sigma^2) &\propto 1/\sigma^2
   \end{align*}
   
-  %%%%% START THE DIFF PARTS %%%%%
-  \begin{enumerate}
+%%%%% START THE DIFF PARTS %%%%%
+\begin{enumerate}
   %%%%% First Part %%%%%
   \item 
   The goal for this sampler is to make it in as few steps as possible.
@@ -41,7 +39,7 @@
     %
     \item \textbf{let} $\theta_{1,0},\cdots,\theta_{n_g,0},\lambda_{1,0},\cdots,\lambda_{n_g,0}, \sigma^2_0, \tau^2_0$ be given
     %
-    \item \textbf{while} $i < $ |\verb ITER|
+    \item \textbf{while} $i < $ \verb|ITER|
     \begin{enumerate}
       \item \textbf{For} $g=1,\cdots,G$, sample $\theta_g \sim N(\mu_g,\gamma_g^2)$
       %
@@ -53,20 +51,24 @@
         \textbf{let} $\lambda_{g,i}^2 = \lambda_g^{2'}$
         \textbf{else} $\lambda_{g,i}^2 = \lambda_{g,i-1}^2$
       \end{enumerate}
+      \end{enumerate}
       %
-      \item Sample $\sigma^2 \sim IG\bigg(\frac{n}{2}, \frac{1}{2} \sum_{g=1}^{G} \sum_{i=1}^{n_g}(y_{ig} - \theta_g)^2\bigg)$
-      \item Sample $\tau^2$ via a Metropolis-Hastings step the posterior from using the standard non-informative prior as its proposal i.e.
+      \item \textbf{Sample} $\sigma^2 \sim IG\bigg(\frac{n}{2}, \frac{1}{2} \sum_{g=1}^{G} \sum_{i=1}^{n_g}(y_{ig} - \theta_g)^2\bigg)$
+      \item \textbf{Sample} $\tau^2$ via a Metropolis-Hastings step the posterior from using the standard non-informative prior as its proposal i.e.
       \begin{enumerate}
-        \item \textbf{Draw} $\tau^2^{'} \sim IG\bigg(\frac{G}{2}, \sum_{g=1}^{G} \frac{\theta_g^2}{2\lambda_g^2}\bigg)\\
+        \item \textbf{Draw} $\tau^{2'} \sim IG\bigg(\frac{G}{2}, \sum_{g=1}^{G} \frac{\theta_g^2}{2 \lambda_g^2} \bigg)$
         \item \textbf{Draw} $u$ from U(0,1)
-        \item \textbf{If} $u < \frac{q(\sigma^{2'})}{q(\sigma^2)} \frac{p(\sigma^2)}{p(\sigma^{2'})}$ \textbf{then} \\
-        \textbf{let} $\sigma_{i}^2 = \sigma^{2'}$
-        \textbf{else} $\sigma_{i}^2 = \sigma_{i-1}^2$
+        \item \textbf{If} $u < \frac{q(\tau^{2'})}{q(\tau^2)} \frac{p(\tau^2)}{p(\tau^{2'})}$ \textbf{then} \\
+        \textbf{let} $\tau_{i}^2 = \tau^{2'}$
+        \textbf{else} $\tau_{i}^2 = \tau_{i-1}^2$ \\
     \end{enumerate}
   \end{enumerate}
-  
+
+
+
+
   Full Conditionals:
-  $\theta$ via:
+  $\theta$:
   \begin{align*}
     \theta_g|\cdots &\overset{ind}{\sim} N(\mu_g,\gamma_g^2) \\
     \gamma_g^2  &= \left[ \frac{1}{\lambda_i^2 \tau_i^2} + \frac{n_g}{\sigma^2} \right]^{-1} \\
@@ -75,21 +77,23 @@
   \end{align*}
   
   
-  $\sigma^2$ via:
+  $\sigma^2$:
   \begin{equation*}
     \sigma^2|\cdots \sim IG\bigg(\frac{n}{2}, \frac{1}{2} \sum_{g=1}^{G} \sum_{i=1}^{n_g}(y_{ig} - \theta_g)^2\bigg)\\
   \end{equation*}
   
   
     $\lambda_g^2$ is sampled via a Metropolis-Hastings step since it's conditional posterior is unknown. For the proposal, we will use the posterior from using the standard non-informative prior($p(\lambda_g^2) \propto 1/\lambda_g^2$):
-  \begin{equation*}
-    \lambda_g^2|\cdots \sim IG\bigg(\frac{1}{2}, \frac{\theta_g^2}{2\tau^2}\bigg)\\
-  \end{equation*}
+  \begin{align*}
+    \lambda_g^2|\cdots &\sim IG\bigg(\frac{1}{2}, \frac{\theta_g^2}{2\tau^2}\bigg)\\
+    q(\lambda_g^2|\cdots) &\propto \frac{1}{\sqrt{\lambda^2_g}} \frac{1}{1 + \lambda^2_g} exp\bigg( -\frac{\theta^2_g}{2\lambda^2_g \tau^2} \bigg)
+  \end{align*}
   
   Similarly, $\tau^2$ is sampled via a Metropolis-Hastings step since it's conditional posterior is unknown. For the proposal, we will use the posterior from using the standard non-informative prior($p(\tau^2) \propto 1/\tau^2$):
-  \begin{equation*}
-    \tau^2|\cdots \sim IG\bigg(\frac{G}{2}, \sum_{g=1}^{G} \frac{\theta_g^2}{2\lambda_g^2}\bigg)\\
-  \end{equation*}
+  \begin{align*}
+    \tau^2|\cdots &\sim IG\bigg(\frac{G}{2}, \sum_{g=1}^{G} \frac{\theta_g^2}{2\lambda_g^2}\bigg)\\
+        q(\tau^2|\cdots) &\propto \bigg(\frac{1}{\sqrt{\tau^2}}\bigg)^G \frac{1}{1 + \tau^2} exp\bigg( -\frac{1}{2\tau^2} \sum_{g=1}^{G} \frac{\theta^2_g}{\lambda^2_g} \bigg)
+  \end{align*}
   
   
   This model described above I called the Informative Horseshoe since its proposals for $\tau$ and $\lambda_g$ are fairly informative. I also ran a similar model using non-informative proposals for $\tau$ and $\lambda_g$. This will be referred to as the Vague Horseshoe.
@@ -97,7 +101,7 @@
   
   %%%%% Second Part %%%%%
   \item 
-  Here is the samplers coded up in |\verb R|.
+  Here is the samplers coded up in \verb|R|.
   <<Horseshoe_Sampler_setup, echo=TRUE, messages=FALSE>>=
 
   mcmc_horseshoe_inform <- function(n_reps, y, group, initial_values){
@@ -337,8 +341,8 @@
   y &{\sim} N(\theta, I)
   \end{align*}
   
-  And in R,
-  <<data_setup, echo=true, messages=FALSE, cache=TRUE>>=
+  And in \verb|R|,
+  <<data_setup, echo=TRUE, messages=FALSE, cache=TRUE>>=
   library("dplyr")
   library("Rcpp")
   sourceCpp("homework2.cpp")
@@ -383,7 +387,7 @@ d$y = rnorm(nrow(d), d$theta)
   @
   
   
-  <<run_models, echo=FALSE, cache=TRUE>>=
+  <<run_models, echo=FALSE, cache=TRUE, message=FALSE>>=
   n_reps = 10000
   InformHorseshoeRes <- mcmc_horseshoe_inform(n_reps, y = d$y, group = d$group, initial_values = initial_values)
   
@@ -397,7 +401,7 @@ d$y = rnorm(nrow(d), d$theta)
   @
   
   
-  We ran all the models for $\Sexpr{n_reps}$ iterations. The models all ran relatively quickly even though they were coded in |\verbR|. They all preformed well in estimating the $\theta$ parameters. In Figure \ref{fig:plot_theta}, the credible intervals of the groups plotted by each model. The intervals when beta is equal to 0 are fairly tight with the point mass prior basically equaling 0 in its samples. When beta is not zero the bands are still fairly tight with the exception of the vague Horseshoe model whose bands are fairly wide due to the nature of vague proposals in it's algorithm. The informative Horseshoe however did not sample the variance parameters very well while the vague Horseshoe model did. This might be remedied if a random walk was used in the proposals for $\tau$ and $\lambda_g$ instead of the MH step.
+  We ran all the models for $\Sexpr{n_reps}$ iterations. The models all ran relatively quickly even though they were coded in \verb|R|. They all preformed well in estimating the $\theta$ parameters. In Figure \ref{fig:plot_theta}, the credible intervals of the groups plotted by each model. The intervals when beta is equal to 0 are fairly tight with the point mass prior basically equaling 0 in its samples. When beta is not zero the bands are still fairly tight with the exception of the vague Horseshoe model whose bands are fairly wide due to the nature of vague proposals in it's algorithm. The informative Horseshoe however did not sample the variance parameters very well while the vague Horseshoe model did. This might be remedied if a random walk was used in the proposals for $\tau$ and $\lambda_g$ instead of the MH step.
  <<plot_theta, messgae=FALSE, echo=FALSE, fig.cap="The credible intervals of the groups plotted by each model. The intervals when beta is equal to 0 are fairly tight with the point mass prior basically equaling 0 in its samples. When beta is not zero the bands are still fairly tight with the exception of the vague Horseshoe model whose bands are fairly wide due to the nature of vague proposals in it's algorithm.">>=
   library(reshape2)
   library(ggplot2)
@@ -500,9 +504,7 @@ theme_bw()
 
 
   
-  
-  
-  \end{enumerate}
+
 \end{enumerate}
 
 \end{document}

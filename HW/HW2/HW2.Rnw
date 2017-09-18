@@ -21,13 +21,13 @@
 
 \begin{enumerate}
 
-  \item The Horseshoe distribution can be described as follows:
+  \item The Horseshoe model can be described as follows:
   \begin{align*}
   y_{ig} &\overset{ind}{\sim} N(x_i\theta_g, \sigma^2) \\
   \theta_g &\overset{ind}{\sim} N(0, \lambda_g^2 \tau^2) \\
   \lambda_g^2 &\sim Ca^{+}(0,1) \\
   \tau^2 &\sim Ca^{+}(0,1) \\
-  \pi(\sigma) &\propto 1/\sigma
+  \pi(\sigma^2) &\propto 1/\sigma^2
   \end{align*}
   
   %%%%% START THE DIFF PARTS %%%%%
@@ -37,19 +37,36 @@
   The goal for this sampler is to make it in as few steps as possible.
   Here are the steps used:
   \begin{enumerate}
-    \item Sample $\theta = (\theta_1, \cdots, \theta_G) \sim p(\theta|\cdots)$
+    \item \textbf{let} $i$ = 1
+    %
+    \item \textbf{let} $\theta_{1,0},\cdots,\theta_{n_g,0},\lambda_{1,0},\cdots,\lambda_{n_g,0}, \sigma^2_0, \tau^2_0$ be given
+    %
+    \item \textbf{while} $i < $ |\verb ITER|
     \begin{enumerate}
-      \item For $g=1,\cdots,G$, sample $\theta_g \sim N(\mu_g,\gamma_g^2)$
-    \end{enumerate}
-    \item Sample $\sigma, \lambda_g^2, \tau$
-    \begin{enumerate}
+      \item \textbf{For} $g=1,\cdots,G$, sample $\theta_g \sim N(\mu_g,\gamma_g^2)$
+      %
+      \item \textbf{For} $g=1,\cdots,G$, sample $\lambda_g^2$ via a Metropolis-Hastings step the posterior from using the standard non-informative prior as its proposal i.e. for each $\lambda_g^2$:
+      \begin{enumerate}
+        \item \textbf{Draw} $\lambda_g^{2'} \sim IG\bigg(\frac{1}{2}, \frac{\theta_g^2}{2\tau^2} \bigg)$
+        \item \textbf{Draw} $u$ from U(0,1)
+        \item \textbf{If} $u < \frac{q(\lambda_g^{2'})}{q(\lambda_g^2)} \frac{p(\lambda_g^2)}{p(\lambda_g^{2'})}$ \textbf{then} \\
+        \textbf{let} $\lambda_{g,i}^2 = \lambda_g^{2'}$
+        \textbf{else} $\lambda_{g,i}^2 = \lambda_{g,i-1}^2$
+      \end{enumerate}
+      %
       \item Sample $\sigma^2 \sim IG\bigg(\frac{n}{2}, \frac{1}{2} \sum_{g=1}^{G} \sum_{i=1}^{n_g}(y_{ig} - \theta_g)^2\bigg)$
-      \item Sample $\lambda_i^2$ via a Metropolis-Hastings step the posterior from using the standard non-informative prior as its proposal
-      \item Sample $\tau^2$ via a Metropolis-Hastings step the posterior from using the standard non-informative prior as its proposal \\
+      \item Sample $\tau^2$ via a Metropolis-Hastings step the posterior from using the standard non-informative prior as its proposal i.e.
+      \begin{enumerate}
+        \item \textbf{Draw} $\tau^2^{'} \sim IG\bigg(\frac{G}{2}, \sum_{g=1}^{G} \frac{\theta_g^2}{2\lambda_g^2}\bigg)\\
+        \item \textbf{Draw} $u$ from U(0,1)
+        \item \textbf{If} $u < \frac{q(\sigma^{2'})}{q(\sigma^2)} \frac{p(\sigma^2)}{p(\sigma^{2'})}$ \textbf{then} \\
+        \textbf{let} $\sigma_{i}^2 = \sigma^{2'}$
+        \textbf{else} $\sigma_{i}^2 = \sigma_{i-1}^2$
     \end{enumerate}
   \end{enumerate}
   
-  More specifically, we'll sample $\theta$ via:
+  Full Conditionals:
+  $\theta$ via:
   \begin{align*}
     \theta_g|\cdots &\overset{ind}{\sim} N(\mu_g,\gamma_g^2) \\
     \gamma_g^2  &= \left[ \frac{1}{\lambda_i^2 \tau_i^2} + \frac{n_g}{\sigma^2} \right]^{-1} \\
@@ -58,32 +75,28 @@
   \end{align*}
   
   
-  $\sigma$ via:
+  $\sigma^2$ via:
   \begin{equation*}
-    \sigma|\cdots \sim IG\bigg(\frac{n}{2}, \frac{1}{2} \sum_{g=1}^{G} \sum_{i=1}^{n_g}(y_{ig} - \theta_g)^2\bigg)\\
+    \sigma^2|\cdots \sim IG\bigg(\frac{n}{2}, \frac{1}{2} \sum_{g=1}^{G} \sum_{i=1}^{n_g}(y_{ig} - \theta_g)^2\bigg)\\
   \end{equation*}
   
   
-    $\lambda_i^2$ is sampled via a Metropolis-Hastings step since it's conditional posterior is unknown. For the proposal, we will use the posterior from using the standard non-informative prior($p(\lambda_i^2) \propto 1/\lambda_i^2$):
+    $\lambda_g^2$ is sampled via a Metropolis-Hastings step since it's conditional posterior is unknown. For the proposal, we will use the posterior from using the standard non-informative prior($p(\lambda_g^2) \propto 1/\lambda_g^2$):
   \begin{equation*}
-    \lambda_i^2|\cdots \sim IG\bigg(\frac{n}{2}, \frac{1}{2\tau^2} \sum_{g=1}^{G} (\theta_g)^2\bigg)\\
+    \lambda_g^2|\cdots \sim IG\bigg(\frac{1}{2}, \frac{\theta_g^2}{2\tau^2}\bigg)\\
   \end{equation*}
   
   Similarly, $\tau^2$ is sampled via a Metropolis-Hastings step since it's conditional posterior is unknown. For the proposal, we will use the posterior from using the standard non-informative prior($p(\tau^2) \propto 1/\tau^2$):
   \begin{equation*}
-    \tau^2|\cdots \sim IG\bigg(\frac{n}{2}, \sum_{g=1}^{G} \frac{1}{2\lambda_i^2}(\theta_g)^2\bigg)\\
+    \tau^2|\cdots \sim IG\bigg(\frac{G}{2}, \sum_{g=1}^{G} \frac{\theta_g^2}{2\lambda_g^2}\bigg)\\
   \end{equation*}
   
   %%%%% Second Part %%%%%
   \item
-  <<Horseshoe Sampler, echo=TRUE, messages=FALSE>>=
-  library("dplyr")
-  library("Rcpp")
-  sourceCpp("homework2.cpp")
-  
-  
-  mcmc_horseshoe <- function(n_reps, y, group, initial_values){
-    require("MCMCpack")
+  <<Horseshoe_Sampler_setup, echo=TRUE, messages=FALSE>>=
+
+  mcmc_horseshoe_inform <- function(n_reps, y, group, initial_values){
+    require("invgamma")
     require("dplyr")
     
     # Setup the storage for posterior samples
@@ -116,13 +129,13 @@
         
         ###### Sample Lambda_g^2 with M-H Step #####
         al <- 1/2
-        bl <- (1/2)*(theta0[g]^2/tau20)
-        lambda2 <- rinvgamma(1, al, bl)
+        bl <- 0.5*(theta0[g]^2/tau20)
+        # lambda2 <- rinvgamma(1, al, bl)
+        lambda2 <- 1/rgamma(1, al, 1/bl)
         
         # Calc phi
-        targetL <- function(newL, oldL, th_g, t2){
-          tl <- 0.5*(log(oldL) - log(newL)) + 2*(log(1+oldL) - log(1+newL)) + (th_g^2/(2*t2*oldL)) - (th_g^2/(2*t2*newL))
-          return(exp(tl))
+        targetL <- function(newL, oldL, thg, t2){
+          return(exp(0.5*(log(oldL) - log(newL)) + log(1+oldL^2) - log(1+newL^2) + (thg^2/(2*t2*oldL)) - (thg^2/(2*t2*newL))))
           }
         
         propL   <- function(newL, oldL, th_g, t2){
@@ -130,8 +143,11 @@
           return(exp(pl))
           }
         
-        phiL <- targetL(lambda2, lambda20[g], theta0[g], tau20)*propL(lambda2, lambda20[g], theta0[g], tau20)
-
+        phiL <- targetL(lambda2, lambda20[g], theta0[g], tau20)#*propL(lambda2, lambda20[g], theta0[g], tau20)
+        if(is.na(phiL > 0)){phiL = 0
+          cat("i=",i,"g=", g,"theta=",theta0[g],"bl=",bl, "lambda=",lambda2,"lambda0=",lambda20[g],"tau20=",tau20,
+                                "target=",targetL(lambda2, lambda20[g], theta0[g], tau20),"prop=",propL(lambda2, lambda20[g], theta0[g], tau20),"\n")}
+        
         uL <- runif(1,0,1)
         if(uL > phiL){lambda2 <- lambda20[g]}
         
@@ -150,12 +166,13 @@
       
       ###### Sample Tau^2 with M-H Step #####
       at <- G/2
-      bt <- (1/2)*(sum(theta0^2/lambda20))
-      tau2 <- rinvgamma(1, at, bt)
-        
+      bt <- 0.5*(sum(theta0^2/lambda20))
+      # tau2 <- rinvgamma(1, at, bt)
+      tau2 <- 1/rgamma(1, at, 1/bt)
+      
       # Calc phi
       targetT <- function(newT, oldT, th, lamb, GG){
-        tl <- (GG/2)*(log(oldT) - log(newT)) + 2*(log(1+oldT) - log(1+newT)) - (0.5*sum(th^2/lamb)/newT) + (0.5*sum(th^2/lamb)/oldT)
+        tl <- (GG/2)*(log(oldT) - log(newT)) + log(1+oldT^2) - log(1+newT^2) - 0.5*sum(th^2/lamb)*((1/newT) + (1/oldT))
         return(exp(tl))
         }
         
@@ -163,9 +180,12 @@
         pl <- (GG/2 + 1)*(log(newT) - log(oldT)) - (0.5*sum(th^2/lamb)/oldT) + (0.5*sum(th^2/lamb)/newT)
         return(exp(pl))
         }
+      
         
-      phiT <- targetT(tau2, tau20, theta0, lambda20, G)*propT(tau2, tau20, theta0, lambda20, G)
-        
+      phiT <- targetT(tau2, tau20, theta0, lambda20, G)#*propT(tau2, tau20, theta0, lambda20, G)
+      if(is.na(phiT > 0)){phiT = 0
+       print(tau2)
+       cat("TauT=",targetT(tau2, tau20, theta0, lambda20, G))}
       uT <- runif(1,0,1)
       if(uT > phiT){tau2 <- tau20}
       
@@ -191,110 +211,7 @@
   }
   
   
-  @
-  
-  <<run_model>>=
-  library("dplyr")
-  library("Rcpp")
-  sourceCpp("homework2.cpp")
-
-
-  # Simulate data
-  set.seed(1)
-  G = 100
-  theta = c(rep(0,G-10), rnorm(10,10))
-  trueTheta = theta
-  d = data.frame(group = rep(1:G, each=5))
-  d$theta = theta[d$group]
-  d$y = rnorm(nrow(d), d$theta)
-
-  # Get initial values
-  s <- d %>% group_by(group) %>%
-    summarize(n = n(),
-              mean = mean(y),
-              var  = var(y))
-
-  initial_values = list(
-    lambda = s$var,
-    mu = mean(s$mean), 
-    theta = s$mean, 
-    sigma2 = mean(s$var), 
-    tau2 = var(s$mean))
-  
-  n_reps = 1000
-  HorseshoeRes <- mcmc_horseshoe(n_reps, y = d$y, group = d$group, initial_values = initial_values)
-  
-  @
-  
-  
-  
- <<plot_theta>>=
-  library(reshape2)
-  library(ggplot2)
-  PostTheta <- data.frame(HorseshoeRes$theta)
-  mTheta <- melt(PostTheta)
-  names(mTheta) <- c("Theta", "Sample")
-  levels(mTheta$Theta) <- sub("X", "", levels(mTheta$Theta))
-  mTheta$trueTheta <- trueTheta[mTheta$Theta]
-  mTheta$Iter <- rep(c(1:n_reps), nlevels(mTheta$Theta))
-
-  ggplot(mTheta, aes(x = Sample)) + geom_histogram() + geom_vline(aes(xintercept = trueTheta), color="red") + facet_wrap(~Theta)
-  
-  ggplot(mTheta, aes(x=Iter, y = Sample)) + geom_line() + facet_wrap(~Theta)
-  
-  mTheta %>%
-    group_by(Theta) %>%
-    summarise(accptprob = length(unique(Sample))/length(Sample))
-  
-  
-  @
-  
-  <<plot_lambda>>=
-  Postlambda <- data.frame(HorseshoeRes$lambda)
-  mlambda <- melt(Postlambda)
-  names(mlambda) <- c("lambda", "Sample")
-  levels(mlambda$lambda) <- sub("X", "", levels(mlambda$lambda))
-  mlambda$Iter <- rep(c(1:n_reps), nlevels(mlambda$lambda))
-  ggplot(mlambda, aes(x = Sample)) + geom_histogram() + facet_wrap(~lambda)
-  ggplot(mlambda, aes(x=Iter, y = Sample)) + geom_line() + facet_wrap(~lambda)
-  
-  
- estl <-    mlambda %>%
-    group_by(lambda) %>%
-    summarise(accptprob = length(unique(Sample))/length(Sample),
-              estlambda = mean(Sample))
-  
-  
-  @
-  
-  <<plot_sigma2_tau2>>=
-  library(reshape2)
-  library(ggplot2)
-  
-  ggplot() + geom_histogram(aes(x = HorseshoeRes$sigma2)) + geom_vline(xintercept = as.numeric(initial_values["sigma2"]), color="red")
-  ggplot() + geom_line(aes(x = 1:n_reps ,y = HorseshoeRes$sigma2))
-  
-  summary(HorseshoeRes$sigma2)
-  
-  ggplot() + geom_histogram(aes(x = HorseshoeRes$tau2))   + geom_vline(xintercept = as.numeric(initial_values["tau2"]), color="red")
-  ggplot() + geom_line(aes(x = 1:n_reps ,y = HorseshoeRes$tau2))
-  
-  summary(HorseshoeRes$tau2)
-  
-  # Acceptance probability
-  length(unique(HorseshoeRes$tau2))/length(HorseshoeRes$tau2)
-  @
-  
-  
-  
-  
-    <<Horseshoe Sampler, echo=TRUE, messages=FALSE>>=
-  library("dplyr")
-  library("Rcpp")
-  sourceCpp("homework2.cpp")
-  
-  
-  mcmc_horseshoe2 <- function(n_reps, y, group, initial_values){
+  mcmc_horseshoe_vague <- function(n_reps, y, group, initial_values){
     require("MCMCpack")
     require("dplyr")
     
@@ -327,8 +244,8 @@
         theta      <- rnorm(1, muTheta, sigmaTheta)
         
         ###### Sample Lambda_g^2 with M-H Step #####
-        al <- 1/2
-        bl <- (1/2)*(theta0[g]^2/tau20)
+        al <- 1
+        bl <- 2
         lambda2 <- rinvgamma(1, al, bl)
         
         # Calc phi
@@ -338,11 +255,11 @@
           }
         
         propL   <- function(newL, oldL, th_g, t2){
-          pl <- 1.5*(log(newL) - log(oldL)) + (th_g^2/(2*t2))/newL - (th_g^2/(2*t2))/oldL
+          pl <- (1.5)*(log(newL) - log(oldL)) - (20/oldL) + (20/newL)
           return(exp(pl))
           }
         
-        phiL <- targetL(lambda2, lambda20[g], theta0[g], tau20)*propL(lambda2, lambda20[g], theta0[g], tau20)
+        phiL <- targetL(lambda2, lambda20[g], theta0[g], tau20)#*propL(lambda2, lambda20[g], theta0[g], tau20)
 
         uL <- runif(1,0,1)
         if(uL > phiL){lambda2 <- lambda20[g]}
@@ -361,13 +278,13 @@
       sigma2 <- rinvgamma(1,a,b)
       
       ###### Sample Tau^2 with M-H Step #####
-      at <- G/2
-      bt <- 20
+      at <- 1
+      bt <- 1
       tau2 <- rinvgamma(1, at, bt)
         
       # Calc phi
       targetT <- function(newT, oldT, th, lamb, GG){
-        tl <- (GG/2)*(log(oldT) - log(newT)) + 2*(log(1+oldT) - log(1+newT)) - (0.5*sum(th^2/lamb)/newT) + (0.5*sum(th^2/lamb)/oldT)
+        tl <- (GG/2)*(log(oldT) - log(newT)) + 2*(log(1+oldT) - log(1+newT)) - (.5*sum(th^2/lamb)/newT) + (.5*sum(th^2/lamb)/oldT)
         return(exp(tl))
         }
         
@@ -376,7 +293,7 @@
         return(exp(pl))
         }
         
-      phiT <- targetT(tau2, tau20, theta0, lambda20, G)*propT(tau2, tau20, G)
+      phiT <- targetT(tau2, tau20, theta0, lambda20, G)#*propT(tau2, tau20, G)
         
       uT <- runif(1,0,1)
       if(uT > phiT){tau2 <- tau20}
@@ -405,20 +322,26 @@
   
   @
   
-  <<run_model>>=
+  
+  
+  
+  %%%%% Third Part %%%%%
+  \item
+  Here we set up the data simulation:
+  <<data_setup, echo=true, messages=FALSE>>=
   library("dplyr")
   library("Rcpp")
   sourceCpp("homework2.cpp")
 
 
   # Simulate data
-  set.seed(1)
-  G = 100
-  theta = c(rep(0,G-10), rnorm(10,10))
-  trueTheta = theta
-  d = data.frame(group = rep(1:G, each=5))
-  d$theta = theta[d$group]
-  d$y = rnorm(nrow(d), d$theta)
+set.seed(1)
+G = 25
+theta = c(rep(0,G-5), rnorm(5,c(35,10,15,15,20), sd=5))
+trueTheta = theta
+d = data.frame(group = rep(1:G, each=10))
+d$theta = theta[d$group]
+d$y = rnorm(nrow(d), d$theta)
 
   # Get initial values
   s <- d %>% group_by(group) %>%
@@ -433,36 +356,84 @@
     sigma2 = mean(s$var), 
     tau2 = var(s$mean))
   
-  n_reps = 1000
-  HorseshoeRes2 <- mcmc_horseshoe2(n_reps, y = d$y, group = d$group, initial_values = initial_values)
+  # Set prior
+  prior = list(m = 0, C = 100, a = 1, b = 1, c = 1)
+  
+  # Additional initial and prior values
+  initial_values$gamma = abs(s$mean) > 2*sqrt(initial_values$sigma2)
+  initial_values$pi = 1-mean(initial_values$gamma)
+  initial_values$psi = with(initial_values, ifelse(gamma, theta, rnorm(G, mu, sqrt(tau2))))
+  initial_values$mu = 0
+  initial_values$tau2 = var(s$mean[initial_values$gamma])
+  if (is.na(initial_values$tau2)) initial_values$tau2 = 1
+  prior$a_pi = prior$b_pi = 1
+  initial_values$phi = rep(1,G)
+  prior$df = 3
   
   @
   
   
+  <<run_models, echo=FALSE>>=
+  n_reps = 10000
+  InformHorseshoeRes <- mcmc_horseshoe_inform(n_reps, y = d$y, group = d$group, initial_values = initial_values)
   
- <<plot_theta>>=
+  
+  VagueHorseshoeRes <- mcmc_horseshoe_vague(n_reps, y = d$y, group = d$group, initial_values = initial_values)
+  
+  PointMassRes = mcmc_pointmass_t(n_reps, y = d$y, group = d$group, 
+                          initial_values = initial_values,
+                          prior = prior,
+                          verbose = 0)
+  @
+  
+  
+  In this plot we can see the CI of the groups plotted by each model.
+ <<plot_theta, messgae=FALSE, echo=FALSE>>=
   library(reshape2)
   library(ggplot2)
-  PostTheta <- data.frame(HorseshoeRes$theta)
-  mTheta <- melt(PostTheta)
-  names(mTheta) <- c("Theta", "Sample")
-  levels(mTheta$Theta) <- sub("X", "", levels(mTheta$Theta))
-  mTheta$trueTheta <- trueTheta[mTheta$Theta]
-  mTheta$Iter <- rep(c(1:n_reps), nlevels(mTheta$Theta))
+  # PostTheta <- data.frame(InformHorseshoeRes$theta)
+  # mTheta <- melt(PostTheta)
+  # names(mTheta) <- c("Theta", "Sample")
+  # levels(mTheta$Theta) <- sub("X", "", levels(mTheta$Theta))
+  # mTheta$trueTheta <- trueTheta[mTheta$Theta]
+  # mTheta$Iter <- rep(c(1:n_reps), nlevels(mTheta$Theta))
 
-  ggplot(mTheta, aes(x = Sample)) + geom_histogram() + geom_vline(aes(xintercept = trueTheta), color="red") + facet_wrap(~Theta)
+  # ggplot(mTheta, aes(x = Sample)) + geom_histogram() + geom_vline(aes(xintercept = trueTheta), color="red") + facet_wrap(~Theta)
+  # 
+  # ggplot(mTheta, aes(x=Iter, y = Sample)) + geom_line() + facet_wrap(~Theta)
+  # 
+  # summary(PointMassRes$theta)
+  # summary(InformHorseshoeRes$theta)
   
-  ggplot(mTheta, aes(x=Iter, y = Sample)) + geom_line() + facet_wrap(~Theta)
+  ImTheta <- melt(data.frame(InformHorseshoeRes$theta))
+  ImTheta$Model <- "InformativeHorseshoe"
+  VmTheta <- melt(data.frame(VagueHorseshoeRes$theta))
+  VmTheta$Model <- "VagueHorseshoe"
+  PmTheta <- melt(data.frame(PointMassRes$theta))
+  PmTheta$Model <- "PointMass"
+  mTheta <- rbind(ImTheta,VmTheta,PmTheta)
+  names(mTheta)[1:2] <- c("Group", "Sample")
+  levels(mTheta$Group) <- sub("X", "", levels(mTheta$Group))
   
-  mTheta %>%
-    group_by(Theta) %>%
-    summarise(accptprob = length(unique(Sample))/length(Sample))
+  CITheta <- mTheta %>%
+    group_by(Group, Model) %>%
+    summarise(q25 = quantile(Sample, probs=c(0.025)),
+              q975 = quantile(Sample, probs=c(0.975)))
+  CITheta$TrueTheta <- trueTheta[CITheta$Group]
   
+  ggplot(CITheta, aes(x=q25, xend=q975, y=Group, yend=Group)) +
+facet_grid(~Model) +
+geom_segment() +
+geom_segment(aes(x = TrueTheta, xend = TrueTheta), color="red", size=10) +
+# geom_vline(aes(xintercept=TrueTheta), color="red") +
+#coord_cartesian(xlim=c(0,35)) +
+labs(x="CI for Theta") +
+theme_bw()
   
   @
   
   <<plot_lambda>>=
-  Postlambda <- data.frame(HorseshoeRes$lambda)
+  Postlambda <- data.frame(InformHorseshoeRes$lambda)
   mlambda <- melt(Postlambda)
   names(mlambda) <- c("lambda", "Sample")
   levels(mlambda$lambda) <- sub("X", "", levels(mlambda$lambda))
@@ -474,31 +445,50 @@
  estl <-    mlambda %>%
     group_by(lambda) %>%
     summarise(accptprob = length(unique(Sample))/length(Sample),
-              estlambda = mean(Sample))
+              estlambda = median(Sample))
   
   
   @
   
-  <<plot_sigma2_tau2>>=
+  <<plot_sigma2_tau2, echo=FALSE>>=
   library(reshape2)
   library(ggplot2)
   
-  ggplot() + geom_histogram(aes(x = HorseshoeRes$sigma2)) + geom_vline(xintercept = as.numeric(initial_values["sigma2"]), color="red")
-  ggplot() + geom_line(aes(x = 1:n_reps ,y = HorseshoeRes$sigma2))
+  ggplot() + geom_histogram(aes(x = InformHorseshoeRes$sigma2)) + geom_vline(xintercept = as.numeric(initial_values["sigma2"]), color="red") + scale_x_sqrt()
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = InformHorseshoeRes$sigma2)) + scale_y_sqrt()
   
-  summary(HorseshoeRes$sigma2)
+  ggplot() + geom_histogram(aes(x = VagueHorseshoeRes$sigma2)) + geom_vline(xintercept = as.numeric(initial_values["sigma2"]), color="red") + scale_x_sqrt()
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = VagueHorseshoeRes$sigma2)) + scale_y_sqrt()
   
-  ggplot() + geom_histogram(aes(x = HorseshoeRes$tau2))   + geom_vline(xintercept = as.numeric(initial_values["tau2"]), color="red")
-  ggplot() + geom_line(aes(x = 1:n_reps ,y = HorseshoeRes2$tau2))
+  ggplot() + geom_histogram(aes(x = PointMassRes$sigma2)) + geom_vline(xintercept = as.numeric(initial_values["sigma2"]), color="red") + scale_x_sqrt()
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = PointMassRes$sigma2)) + scale_y_sqrt()
   
-  summary(HorseshoeRes$tau2)
-  summary(HorseshoeRes2$tau2)
-
+  summary(InformHorseshoeRes$sigma2)
+  
+  ggplot() + geom_histogram(aes(x = InformHorseshoeRes$tau2))   + geom_vline(xintercept = as.numeric(initial_values["tau2"]), color="red") + scale_x_sqrt()
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = InformHorseshoeRes$tau2)) + scale_y_sqrt()
+  
+  ggplot() + geom_histogram(aes(x = VagueHorseshoeRes$tau2))   + geom_vline(xintercept = as.numeric(initial_values["tau2"]), color="red") + scale_x_sqrt()
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = VagueHorseshoeRes$tau2)) + scale_y_sqrt()
+  
+  ggplot() + geom_histogram(aes(x = PointMassRes$tau2))   + geom_vline(xintercept = as.numeric(initial_values["tau2"]), color="red") + scale_x_sqrt()
+  ggplot() + geom_line(aes(x = 1:n_reps ,y = PointMassRes$tau2)) + scale_y_sqrt()
+  
+  summary(InformHorseshoeRes$tau2)
+  summary(VagueHorseshoeRes$tau2)
+  summary(PointMassRes$tau2)
   
   # Acceptance probability
-  length(unique(HorseshoeRes2$tau2))/length(HorseshoeRes2$tau2)
+  length(unique(InformHorseshoeRes$tau2))/length(InformHorseshoeRes$tau2)
+  length(unique(VagueHorseshoeRes$tau2))/length(VagueHorseshoeRes$tau2)
+  length(unique(PointMassRes$tau2))/length(PointMassRes$tau2)
   @
   
+  
+  
+  
+
+
   
   
   

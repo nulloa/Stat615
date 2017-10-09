@@ -1,0 +1,216 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb,mathrsfs,fancyhdr,syntonly,lastpage,hyperref,enumitem,graphicx}
+
+\hypersetup{colorlinks=true,urlcolor=red}
+
+\topmargin      -1.5cm   % read Lamport p.163
+\oddsidemargin  -0.04cm  % read Lamport p.163
+\evensidemargin -0.04cm  % same as oddsidemargin but for left-hand pages
+\textwidth      16.59cm
+\textheight     23.94cm
+\parskip         7.2pt   % sets spacing between paragraphs
+\parindent         0pt   % sets leading space for paragraphs
+\pagestyle{empty}        % Uncomment if don't want page numbers
+\pagestyle{fancyplain}
+
+
+\begin{document}
+\lhead{Homework 3}
+\chead{STAT 615 - Advanced Bayesian Methods}
+\rhead{Page \thepage\ of \pageref{LastPage}}
+
+Consider the linear trend model
+\begin{align*}
+Y_t &= F\theta_t + \nu_t, && \nu_t \stackrel{ind}{\sim}N(0,V) \\
+\theta_t &= G\theta_{t-1} + \omega_t,  &&\omega_t \stackrel{ind}{\sim}N_2(0,W) \\
+\theta_0 &\sim N(m_0,C_0)
+\end{align*}
+where
+\[
+V = \sigma^2, \quad
+F = (1,0), \quad
+G = \left[ \begin{array}{cc} 1 & 1 \\ 0 & 1 \end{array} \right], \quad 
+\mbox{and} \quad
+W = \left[ \begin{array}{cc} 0 & 0 \\ 0 & \sigma_\beta^2\end{array} \right].
+\]
+Let $y=(y_1,\ldots,y_n)$, $\theta = (\theta_0,\ldots,\theta_T)$, and
+$\psi = (\sigma^2,\sigma_\beta^2)$.
+
+For simplicity, assume the variances have independent inverse gamma
+priors with shape and rate parameters both equal to 1.
+
+
+
+\section*{Problem 1}
+\begin{align*}
+  p(\psi|\theta,y) &\propto p(\theta, y | \psi) \\
+                   &\propto p(\theta| y, \psi) p(y | \psi) p(\psi) \\
+                   &\propto p(\theta| y, \psi) \left[ \prod_{t=1}^T p(y_t | y_{1:t-1}, \psi) \right] p(\psi)
+\end{align*}
+
+where $p(\theta| y, \psi)$ is the posterior of $\theta$
+(Hint: Conditioning on the states means that you can calculate $\nu_{1:T}$ and 
+$\omega_{1:T}$.)
+
+
+\section*{Problem 2}
+An $S$ that will result in approximately 40\%  acceptance in the Metropolis algorithm.
+$S = \left[ \begin{array}{cc} 1 & 1 \\ 0 & 1 \end{array} \right] $
+
+\section*{Problem 3} 
+Run MCMC 1 starting at the MLE (use the {\tt dlm::dlmMLE} function) for 
+9,999 iterations and compute the time per effective 
+sample. To calculate time, use the first element of {\tt system.time()}. 
+To calculate the number of effective samples, use {\tt mcmcse::ess}.
+<<message=FALSE>>=
+lake <- read.table("lakeSuperior.dat", col.names = c("year","precipitation_inches"))
+lake <- as.ts(lake$precipitation_inches)
+plot(lake, type ='o', col = "seagreen")
+@
+
+
+
+
+
+\section*{Problem 3} 
+Run MCMC 1 starting at the MLE (use the {\tt dlm::dlmMLE} function) for 
+9,999 iterations and compute the time per effective 
+sample. To calculate time, use the first element of {\tt system.time()}. 
+To calculate the number of effective samples, use {\tt mcmcse::ess}.
+<<mcmc1, message=FALSE>>=
+
+mcmc1 <- function(y, niter, sval){
+  # setup storage
+  thetakeep <- matrix(data=NA, ncol=nrow(y)+1, nrow=niter)
+  phikeep   <- matrix(data=NA, ncol=nrow(y)+1, nrow=niter)
+  
+  for(i in 1:niter){
+    # sample theta jointly via backwards sampling
+    dlmM    <- dlm::dlmModPoly(2, dV = sval$v, dW=sval$w)
+    FiltD   <- dlm::dlmFilter(y, dlmM)
+    bsample <- dlm::dlmBSample(FiltD)
+    
+    # sample phi 
+    dphi <- function(phi, y, a, b){
+      for(t in 1:nrow(t)){
+        dlmM      <- dlm::dlmModPoly(2, dV = sval$v, dW=sval$w)
+        FiltD     <- dlm::dlmFilter(y[t], dlmM)
+        Rt        <- dlm::dlmSvd2var(FiltD$U.C, FiltD$D.C)
+        tmpPhi[t] <- dnorm(y[t], filtD$a, Rt)
+      }
+      return(prod(tmpPhi)*dinvgamma(phi, a, b))
+    }
+    phi <- 
+    
+    # save samples
+    thetakeep[i,] <- bsample
+    phikeep[i,]   <- phi
+  }
+  
+  # end of sampling mechanism
+  return(list("theta"=thetakeep, "phi"=phikeep))
+}
+
+@
+
+
+
+\section*{Problem 4} 
+Run MCMC 2 starting at the MLE (use the {\tt dlm::dlmMLE} function) for 
+9,999 iterations and compute the time per effective 
+sample. To calculate time, use the first element of {\tt system.time()}. 
+To calculate the number of effective samples, use {\tt mcmcse::ess}.
+<<mcmc2, message=FALSE>>=
+
+mcmc2 <- function(y, niter, sval){
+  # setup storage
+  thetakeep <- matrix(data=NA, ncol=nrow(y)+1, nrow=niter)
+  phikeep   <- matrix(data=NA, ncol=nrow(y)+1, nrow=niter)
+  tmpPhi    <- NULL
+  
+  dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
+  
+  for(i in 1:niter){
+    # sample phi 
+    dphi <- function(phi, y, a, b){
+      for(t in 1:nrow(t)){
+        dlmM      <- dlm::dlmModPoly(2, dV = sval$v, dW=sval$w)
+        FiltD     <- dlm::dlmFilter(y[t], dlmM)
+        Rt        <- dlm::dlmSvd2var(FiltD$U.C, FiltD$D.C)
+        tmpPhi[t] <- dnorm(y[t], filtD$a, Rt)
+      }
+      return(prod(tmpPhi)*dinvgamma(phi, a, b))
+    }
+    
+    
+    propphi <- MASS::mvrnorm(n = 1, prevphi, Sigma)
+    
+    u <- runif(1, 0, 1)
+    ifelse(u > dphi(prevphi, y, 1, 1)/dphi(propphiy, 1, 1), phi <- prevphi, phi <- propphi)
+    
+    # sample theta
+    dlmM    <-  dlm::dlmModPoly(2, dV = phi[1], dW=c(0,phi[2]))
+    FiltD   <- dlm::dlmFilter(y, dlmM)
+    bsample <- dlm::dlmBSample(FiltD)
+    
+    
+    # save samples
+    thetakeep[i,] <- bsample
+    phikeep[i,]   <- phi
+    prevphi <- phi
+  }
+  
+  # end of sampling mechanism
+  return(list("theta"=thetakeep, "phi"=phikeep))
+}
+
+
+@
+
+
+
+
+\section*{Problem 5.}
+Posterior plots for the standard deviations to compare MCMC 1 and MCMC 2
+<<message=FALSE>>=
+library("dplyr")
+library("ggplot2")
+d <- expand.grid(variable = c("sigma","sigma_beta"),
+                 method = c("MCMC 1", "MCMC 2"),
+                 iteration = 1:9999) %>%
+  group_by(variable, method, iteration) %>%
+  mutate(value = rgamma(n(),1))
+
+dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
+dsqrtinvgamma = function(x, a, b) dinvgamma(x^2, a, b)*2*x
+
+ggplot(d, aes(x=value)) + 
+  geom_histogram(aes(y=..density..), bins = 100) + 
+  facet_grid(method ~ variable, scales = "free") +
+  stat_function(fun = dsqrtinvgamma, color = "red", args = list(a = 1, b = 1)) +
+  theme_bw()
+@
+
+\section*{Problem 6.}
+Posterior (smoothing) plots for the equal-tail 95\% credible interval for the states to compare MCMC 1 and MCMC 2.
+<<>>=
+n <- nrow(lake)
+d <- expand.grid(time = 0:n,
+                 method = c("MCMC 1", "MCMC 2"),
+                 iteration = 1:99) %>%
+  group_by(time, method, iteration) %>%
+  mutate(value = rnorm(n()) + mean(lake$precipitation_inches)) %>%
+  group_by(time, method) %>%
+  summarize(L = quantile(value, .025),
+         U = quantile(value, .975)) %>%
+  ungroup() %>%
+  mutate(year = time + min(lake$year) - 1)
+
+ggplot(d) + 
+  geom_ribbon(aes(x=year, ymin=L, ymax = U), fill = "gray70") + 
+  geom_point(data = lake, aes(x=year, y = precipitation_inches)) +
+  facet_grid(method~., scales = "free") +
+  theme_bw()
+@
+
+\end{document}

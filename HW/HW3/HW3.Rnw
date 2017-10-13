@@ -78,15 +78,73 @@ sval <- list(v=exp(fit$par[1]), w=exp(fit$par[2]))
 
 \section*{Problem 2}
 
-$S = \left[ \begin{array}{cc} 0.3848358 & 0.1985679 \\ 0.1985679 & 0.2019335 \end{array} \right] $
+$S = \left[ \begin{array}{cc} 9.7598368 & -0.17258778 \\ -0.1725878 & 0.03841483 \end{array} \right] $
 
-This $S$ will result in $\approx 39\%$ acceptance in the Metropolis algorithm was obtained using the code below.
+This $S$ will result in $\approx 41\%$ acceptance in the Metropolis algorithm was obtained using the code below.
+<<echo=FALSE, eval=FALSE>>=
+mcmc2 <- function(y, niter, sval, Sigma){
+  # Summary Stats
+  n <- length(y)
+  
+  # setup storage
+  thetakeep <- matrix(data=NA, ncol=2*(n+1), nrow=niter)
+  phikeep   <- matrix(data=NA, ncol=2, nrow=niter)
+  
+  # setup initialization
+  prevphi  <- c(sval$v, sval$w)
+  
+  dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
+  
+  for(i in 1:niter){
+    if(i%%(niter/10) == 0){print(paste(100*i/niter,"% of iterations complete", sep=""))}
+    
+    # sample phi 
+    dphi <- function(phi, y, a, b){
+      dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
+      tmpPhi <- NULL
+      dlmM      <- dlm::dlmModPoly(2, dV = phi[1], dW=c(0,phi[2]), m0=c(10,10), C0=matrix(c(10,0,0,5), 2, 2))
+      FiltD     <- dlm::dlmFilter(y, dlmM)
+      Rt        <- dlm::dlmSvd2var(FiltD$U.R, FiltD$D.R)
+      for(t in 1:length(y)){
+        prop_var <- dlmM$FF %*% Rt[[t]] %*% t(dlmM$FF) + dlmM$V
+        tmpPhi[t] <- dnorm(y[t], FiltD$f[t], sqrt(prop_var), log=TRUE)
+      }
+      return(sum(tmpPhi) + log(dinvgamma(phi[1], a, b)) + log(dinvgamma(phi[2], a, b)))
+    }
+    
+    propphi <- MASS::mvrnorm(n = 1, prevphi, Sigma)
+    
+    if(sum(propphi < 0) == 1){
+      phi <- prevphi
+    }else{
+      u <- runif(1, 0, 1)
+      # print(dphi(prevphi, y, 1, 1)/dphi(propphi, y, 1, 1))
+      ifelse(u > exp(dphi(propphi, y, 1, 1)) / exp(dphi(prevphi, y, 1, 1)), phi <- prevphi, phi <- propphi)
+    }
+    
+    # sample theta
+    dlmM    <- dlm::dlmModPoly(2, dV = phi[1], dW=c(0,phi[2]))
+    FiltD   <- dlm::dlmFilter(y, dlmM)
+    bsample <- dlm::dlmBSample(FiltD)
+    
+    # save samples
+    thetakeep[i,] <- c(bsample[,1],bsample[,2])
+    phikeep[i,1]  <- phi[1]
+    phikeep[i,2]  <- phi[2]
+    prevphi       <- phi
+  }
+  
+  # end of sampling mechanism
+  return(list("theta"=thetakeep, "phi"=phikeep))
+}
+@
+
 <<message=FALSE, eval=FALSE>>=
 Sigma0 <- matrix(data=c(10,0,0,0.05), 2, 2, byrow=TRUE)
 sigres <- mcmc2(lake, 1000, sval, Sigma0)
 covmat <- cov(sigres$phi)
 
-Sigma <- (2.4^2/n)*covmat + .20
+Sigma <- (2.4^2/2)*covmat - 0.19
 sigres <- mcmc2(lake, 1000, sval, Sigma)
 length(unique(sigres$phi[,1]))/1000
 @
@@ -134,7 +192,7 @@ mcmc1 <- function(y, niter, sval){
 time <- system.time(res <- mcmc1(lake, 9999, sval))
 @
 
-The effective sample size for $\sigma^2$ and $\sigma^2_{\beta}$ is $\Sexpr{mcmcse::ess(res$phi[,1])}$ and  $\Sexpr{mcmcse::ess(res$phi[,2])}$ with an average time of $\Sexpr{as.numeric(time[1]/mcmcse::ess(res$phi[,1]))}$ and  $\Sexpr{as.numeric(time[1]/mcmcse::ess(res$phi[,2]))}$ per effective sample, respectively. Histograms of the effective samples sizes for the different $\theta$ components are presented below.
+The effective sample size for $\sigma^2$ and $\sigma^2_{\beta}$ is $\Sexpr{mcmcse::ess(res$phi[,1])}$ and  $\Sexpr{mcmcse::ess(res$phi[,2])}$ with an average time of $\Sexpr{as.numeric(time[3]/mcmcse::ess(res$phi[,1]))}$ and  $\Sexpr{as.numeric(time[3]/mcmcse::ess(res$phi[,2]))}$ per effective sample, respectively. Histograms of the effective samples sizes for the different $\theta$ components are presented below.
 <<mcmc1diag, message=FALSE, echo=FALSE, fig.align='center'>>=
 efs <- data.frame(value=c(mcmcse::ess(res$theta)))
 efs$variable <- rep(NA, length(efs))
@@ -223,11 +281,11 @@ mcmc2 <- function(y, niter, sval, Sigma){
 }
 
 # using mles found above as starting values
-Sigma <- matrix(data=c(0.3848358,0.1985679,0.1985679,0.2019335), 2, 2, byrow=TRUE)
+Sigma <- matrix(data=c(9.7598368, -0.17258778, -0.1725878, 0.03841483), 2, 2, byrow=TRUE)
 time2 <- system.time(res2 <- mcmc2(lake, 9999, sval, Sigma))
 @
 
-The effective sample size for $\sigma^2$ and $\sigma^2_{\beta}$ is $\Sexpr{mcmcse::ess(res2$phi[,1])}$ and  $\Sexpr{mcmcse::ess(res2$phi[,2])}$ with an average time of $\Sexpr{as.numeric(time2[1]/mcmcse::ess(res2$phi[,1]))}$ and  $\Sexpr{as.numeric(time2[1]/mcmcse::ess(res2$phi[,2]))}$ per effective sample, respectively. Histograms of the effective samples sizes for the different $\theta$ components are presented below.
+The effective sample size for $\sigma^2$ and $\sigma^2_{\beta}$ is $\Sexpr{mcmcse::ess(res2$phi[,1])}$ and  $\Sexpr{mcmcse::ess(res2$phi[,2])}$ with an average time of $\Sexpr{as.numeric(time2[3]/mcmcse::ess(res2$phi[,1]))}$ and  $\Sexpr{as.numeric(time2[3]/mcmcse::ess(res2$phi[,2]))}$ per effective sample, respectively. Histograms of the effective samples sizes for the different $\theta$ components are presented below.
 <<mcmc2diag, message=FALSE, echo=FALSE, fig.align='center'>>=
 efs2 <- data.frame(value=c(mcmcse::ess(res2$theta)))
 efs2$variable <- rep(NA, length(efs))

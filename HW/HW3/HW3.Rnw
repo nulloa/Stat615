@@ -17,7 +17,7 @@
 \begin{document}
 \lhead{Homework 3}
 \chead{STAT 615 - Advanced Bayesian Methods}
-\rhead{Page \thepage\ of \pageref{LastPage}}
+\rhead{Nehemias Ulloa}
 
 Consider the linear trend model
 \begin{align*}
@@ -50,12 +50,12 @@ so then using the fact that $v_t = y_t - F \theta_t \sim N(0, \sigma^2$,
 
 \begin{align*}
   p(\sigma^2|\theta,y) &\propto p(v_t) p(\sigma^2) \\
-                       &\propto (\sigma^2)^{-T/2} exp(frac{\sum_t(y_t - F \theta_t)^2}{2\sigma^2}) (\sigma^2)^{-1-1} exp(-\frac{1}{\sigma^2}) \\
-                       &\propto (\sigma^2)^{-(T/2+1)-1} exp((frac{1}{\sigma^2})(frac{\sum_t(y_t - F \theta_t)^2}{2} + 1)) \\
-                       &\sim Inv-Gamma(\frac{T}{2} + 1, frac{\sum_t(y_t - F \theta_t)^2}{2} + 1)
+                       &\propto (\sigma^2)^{-T/2} exp(\frac{\sum_t(y_t - F \theta_t)^2}{2\sigma^2}) (\sigma^2)^{-1-1} exp(-\frac{1}{\sigma^2}) \\
+                       &\propto (\sigma^2)^{-(T/2+1)-1} exp((\frac{1}{\sigma^2})(\frac{\sum_t(y_t - F \theta_t)^2}{2} + 1)) \\
+                       &\sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(y_t - F \theta_t)^2}{2} + 1)
 \end{align*}
 
-and similarly for $\sigma^2_{\beta}$, $\sigma^2_{\beta}|\cdots \sim Inv-Gamma(\frac{T}{2} + 1, frac{\sum_t(\beta_t - \beta_t-1)^2}{2} + 1)$
+and similarly for $\sigma^2_{\beta}$, $\sigma^2_{\beta}|\cdots \sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(\beta_t - \beta_t-1)^2}{2} + 1)$
 
 
 Here is some basic code setup:
@@ -152,7 +152,7 @@ length(unique(sigres$phi[,1]))/1000
 \section*{Problem 3} 
 Here is the MCMC1 code and checks.
 
-<<mcmc1, message=FALSE, cache=TRUE>>=
+<<mcmc1, message=FALSE, cache=FALSE>>=
 mcmc1 <- function(y, niter, sval){
   # Summary Stats
   n <- length(y)
@@ -198,7 +198,7 @@ efs <- data.frame(value=c(mcmcse::ess(res$theta)))
 efs$variable <- rep(NA, length(efs))
 efs$variable[1:87] <- "mu"
 efs$variable[-c(1:87)] <- "Beta"
-ggplot(efs) + geom_histogram(aes(x=value)) + facet_wrap(~variable)
+ggplot(efs) + geom_histogram(aes(x=value)) + facet_wrap(~variable) + theme_bw()
 @
 
 
@@ -207,23 +207,24 @@ We can also see the trace plots for $\sigma^2$ and $\sigma^2_{\beta}$ that seems
 mphi <- melt(res$phi)
 mphi$Var2 <- factor(mphi$Var2)
 levels(mphi$Var2) <- c("sigma", "sigma_beta")
-ggplot(mphi) + geom_line(aes(x=Var1, y=value)) + facet_wrap(~Var2, scales = "free") + labs(x="Iterations", y="")
+ggplot(mphi) + geom_line(aes(x=Var1, y=value)) + facet_wrap(~Var2, scales = "free") + 
+  labs(x="Iterations", y="") + theme_bw()
 @
 
 
-Also for some diagnostic check, we can look at the Geweke diagnostic. For $\sigma^2$ and $\sigma^2_{\beta}$, the diagnostic is $\Sexpr{coda::geweke.diag(coda::mcmc(res$phi[,1]))}$ and $\Sexpr{coda::geweke.diag(coda::mcmc(res$phi[,2]))}$.
+Also for some diagnostic check, we can look at the Geweke diagnostic. For $\sigma^2$ and $\sigma^2_{\beta}$, the diagnostic is $\Sexpr{as.numeric(coda::geweke.diag(coda::mcmc(res$phi[,1]))$z)}$ and $\Sexpr{as.numeric(coda::geweke.diag(coda::mcmc(res$phi[,2]))$z)}$.
 <<gewekediag, echo=FALSE, message=FALSE, fig.align='center'>>=
 gd <- data.frame(value=as.numeric(coda::geweke.diag(coda::mcmc(res$theta))$z))
 gd$variable <- rep(NA, length(gd))
 gd$variable[1:87] <- "mu"
 gd$variable[-c(1:87)] <- "Beta"
-ggplot(gd) + geom_histogram(aes(x=value)) + facet_wrap(~variable)
+ggplot(gd) + geom_histogram(aes(x=value)) + facet_wrap(~variable) + theme_bw()
 @
 
 
 \section*{Problem 4} 
 Here is the MCMC2 code and checks.
-<<mcmc2, message=FALSE, cache=TRUE>>=
+<<mcmc2, message=FALSE, cache=FALSE>>=
 mcmc2 <- function(y, niter, sval, Sigma){
   # Summary Stats
   n <- length(y)
@@ -291,7 +292,7 @@ efs2 <- data.frame(value=c(mcmcse::ess(res2$theta)))
 efs2$variable <- rep(NA, length(efs))
 efs2$variable[1:87] <- "mu"
 efs2$variable[-c(1:87)] <- "Beta"
-ggplot(efs2) + geom_histogram(aes(x=value)) + facet_wrap(~variable)
+ggplot(efs2) + geom_histogram(aes(x=value)) + facet_wrap(~variable) + theme_bw()
 @
 
 
@@ -300,24 +301,25 @@ We can also see the trace plots for $\sigma^2$ and $\sigma^2_{\beta}$ that seems
 mphi2 <- melt(res2$phi)
 mphi2$Var2 <- factor(mphi2$Var2)
 levels(mphi2$Var2) <- c("sigma", "sigma_beta")
-ggplot(mphi2) + geom_line(aes(x=Var1, y=value)) + facet_wrap(~Var2, scales = "free") + labs(x="Iterations", y="")
+ggplot(mphi2) + geom_line(aes(x=Var1, y=value)) + facet_wrap(~Var2, scales = "free") + 
+  labs(x="Iterations", y="") + theme_bw()
 @
 
 
-Also for some diagnostic check we can look at the Geweke diagnostic. For $\sigma^2$ and $\sigma^2_{\beta}$, the diagnostic is $\Sexpr{coda::geweke.diag(coda::mcmc(res2$phi[,1]))}$ and $\Sexpr{coda::geweke.diag(coda::mcmc(res2$phi[,2]))}$.
+Also for some diagnostic check we can look at the Geweke diagnostic. For $\sigma^2$ and $\sigma^2_{\beta}$, the diagnostic is $\Sexpr{as.numeric(coda::geweke.diag(coda::mcmc(res2$phi[,1]))$z)}$ and $\Sexpr{as.numeric(coda::geweke.diag(coda::mcmc(res2$phi[,2]))$z)}$.
 <<gewekediag2, echo=FALSE, message=FALSE, fig.align='center'>>=
 gd2 <- data.frame(value=as.numeric(coda::geweke.diag(coda::mcmc(res2$theta))$z))
 gd2$variable <- rep(NA, length(gd2))
 gd2$variable[1:87] <- "mu"
 gd2$variable[-c(1:87)] <- "Beta"
-ggplot(gd2) + geom_histogram(aes(x=value)) + facet_wrap(~variable)
+ggplot(gd2) + geom_histogram(aes(x=value)) + facet_wrap(~variable) + theme_bw()
 @
 
 
 
 \section*{Problem 5.}
 Posterior plots for the standard deviations to compare MCMC 1 and MCMC 2
-<<message=FALSE, fig.align='center'>>=
+<<message=FALSE, fig.align='center', echo=FALSE>>=
 d1 <- melt(data.frame(sigma=res$phi[,1], sigma_beta=res$phi[,2]))
 d1$method <- "MCMC 1"
 d2 <- melt(data.frame(sigma=res2$phi[,1], sigma_beta=res2$phi[,2]))
@@ -328,7 +330,7 @@ dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
 dsqrtinvgamma = function(x, a, b) dinvgamma(x^2, a, b)*2*x
 
 ggplot(d) + 
-  geom_histogram(aes(x = value, y = ..density..), bins = 100) + 
+  geom_histogram(aes(x = sqrt(value), y = ..density..), bins = 100) + 
   facet_grid(method ~ variable, scales = "free") +
   stat_function(fun = dinvgamma, color = "red", args = list(a = 1, b = 1)) +
   theme_bw()
@@ -336,7 +338,7 @@ ggplot(d) +
 
 \section*{Problem 6.}
 Posterior (smoothing) plots for the equal-tail 95\% credible interval for the states to compare MCMC 1 and MCMC 2.
-<<message=FALSE, fig.align='center'>>=
+<<message=FALSE, fig.align='center', echo=FALSE>>=
 n <- length(lake)
 L1 <- U1 <- L2 <- U2 <- NULL
 for(i in 1:n){
@@ -363,5 +365,10 @@ ggplot(d) +
   theme_bw() + 
   labs(x="Year", y="Precipitation")
 @
+
+\section*{Problem 7.}
+I think based on the different diagnostics and trace plots, I like MCMC 1 better. The diagnostics look better and the implementation for MCMC 1 is much simpler. MCMC 1 is a lot quicker at getting good samples and it's Geweke diagnostics look like they come from a std normal.
+
+
 
 \end{document}

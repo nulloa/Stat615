@@ -366,8 +366,39 @@ ggplot(d) +
   labs(x="Year", y="Precipitation")
 @
 
+
+
+Posterior (smoothing) plots for the equal-tail 95\% credible interval for the $\beta$'s to compare MCMC 1 and MCMC 2.
+<<message=FALSE, fig.align='center', echo=FALSE>>=
+n <- length(lake)
+L1 <- U1 <- L2 <- U2 <- NULL
+for(i in 1:n){
+  L1[i] <- quantile(res$theta[,i+88], probs=0.025)
+  U1[i] <- quantile(res$theta[,i+88], probs=0.975)
+  L2[i] <- quantile(res2$theta[,i+88], probs=0.025)
+  U2[i] <- quantile(res2$theta[,i+88], probs=0.975)
+}
+dat1 <- data.frame(L=L1, U=U1)
+dat1$method <- "MCMC 1"
+dat1$x <- OGlake$year
+dat1$ogy <- lake
+dat2 <- data.frame(L=L2, U=U2)
+dat2$method <- "MCMC 2"
+dat2$x <- OGlake$year
+dat2$ogy <- lake
+d <- rbind(dat1,dat2)
+d$method <- as.factor(d$method)
+
+ggplot(d) + 
+  geom_ribbon(aes(x=x, ymin=L, ymax = U, fill=method)) + 
+  facet_grid(method~.) +
+  theme_bw() + 
+  labs(x="Year", y="Precipitation")
+@
+
+
 \section*{Problem 7.}
-I think based on the different diagnostics and trace plots, I like MCMC 1 better. The diagnostics look better and the implementation for MCMC 1 is much simpler. MCMC 1 is a lot quicker at getting good samples and it's Geweke diagnostics look like they come from a std normal.
+Based on the different diagnostics and trace plots, MCMC 1 preformed better. The diagnostics look better and the implementation for MCMC 1 is much simpler. MCMC 1 is a lot quicker at getting good samples and it's Geweke diagnostics look like they come from a std normal. The posteriors of $\sigma^2_{\beta}$ don't exactly match up for the two algorithms. I think this is due to the $\Sigma$ used in MCMC 2. If I had estimated $\Sigma$ from the output of MCMC 2 then I believe I would've got more similar results, but in trying to keep with the spirit of what if MCMC 2 was the only sampler available, I got the results I got.
 
 
 

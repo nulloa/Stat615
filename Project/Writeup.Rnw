@@ -1,0 +1,224 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amssymb,mathrsfs,fancyhdr,syntonly,lastpage,hyperref,enumitem,graphicx,setspace,multicol}
+\setlength{\unitlength}{\textwidth}
+\hypersetup{colorlinks=true,urlcolor=red}
+
+\topmargin      -1.5cm   % read Lamport p.163
+\oddsidemargin  -0.04cm  % read Lamport p.163
+\evensidemargin -0.04cm  % same as oddsidemargin but for left-hand pages
+\textwidth      16.59cm
+\textheight     23.94cm
+\parskip         7.2pt   % sets spacing between paragraphs
+% \parindent         0pt   % sets leading space for paragraphs
+\pagestyle{empty}        % Uncomment if don't want page numbers
+\pagestyle{fancyplain}
+%\doublespacing
+
+
+\begin{document}
+\lhead{Project}
+\chead{STAT 615}
+\rhead{Nehemias Ulloa}
+
+
+<<libraries, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE>>=
+library("ggplot2")
+library("cdcfluview")
+library("plyr")
+library("dplyr")
+library("reshape2")
+library("dlm")
+source("../../ServerScripts/R/CreateCDCDF.R")
+@
+
+\section{Introduction}
+
+Influenza is a common illness which many people will deal with at some point in there lives; a contagious illness which attacks the respiratory system. At best, it is a minor inconvenience, but at worst, it can lead to serious health problems including death especially among the young, elderly and pregnant women. Vaccines are a simple and effective way of preventing the spread of influenza. The responsibility to create and distribute the vaccine for the flu falls on the Centers for Disease Control and Prevention (CDC). Because of all of this, increased effort has been placed on understanding influenza via increased monitoring and research by the CDC. One specific facet of the research is trying to model and predict different facets of influenza. 
+
+
+<<data_setup, echo=FALSE, message=FALSE, warning=FALSE>>=
+fludat <- get_flu_data(years=2010:2013)
+fludat$REGION <- as.factor(fludat$REGION)
+fludat <- dplyr::filter(fludat, REGION=="Region 9")
+names(fludat) <- tolower(names(fludat))
+fludat$time <- 1:nrow(fludat)
+flu <- as.numeric(unlist(fludat[,c("ilitotal")]))/as.numeric(unlist(fludat[,c("total patients")]))
+fluts <- ts(fludat$ilitotal, start=c(2010, 40), frequency = 52)
+@
+
+\section{Data}
+
+The data for this project comes from the CDC. They have setup a monitoring system in which doctors weekly turn in the number of of influenza-like patients they see in their office and the total number of patients seen. They collect other variables which will not be considered during this project. This weekly data is then aggregated into regions depending on the location of the office/clinic by taking the sum of all patients with influenza-like-illness and the sum of all patients seen. For this project, I focused on a Region 9 which covers the states of Arizona, California, Hawaii, and Nevada; I also only looked at years 2010-2014 since those years only had 52 CDC's Morbidity and Mortality Weekly Report (MMWR) weeks. Other years had 53 MMWR weeks and since I am newly exploring the use of dynamic linear models, I did not want to complicate the analysis. 
+
+For this project, I used the percent of patients with ILI symptoms. I used percentages instead of the using the raw counts of patients with ILI symptoms since it will allow me to incorporate the total amount of patients seen as well as the number of patients seen showing ILI symptoms. As can be seen in Table \ref{tab:data_summary}, the number of patients seen varies quite a bit, and the number of patients exhibiting ILI like symptoms is low relative to the total number of patients seen. This leads to a small range of percentages from $\approx 0$ to $0.05\%$. This shows the importance of using the percentages instead of the raw counts because it gives an idea of scope of ILI when making predictions.
+
+In order to use the percentages, they needed to be transformed using a log transformation since it showed signs of non-normality. In Figure \ref{fig:qqplots}, the qqplots of the data on its original scale and the log scale are plotted side by side. The log transformation handles the issues with non-normality that the data original showed. There is still a little deviation at the tails but nothing to be too worried about.
+
+In Figure \ref{fig:data_plot}, the weekly logged percentage of patients with Influenza-like-illness symptoms are plotted against time. There an obvious seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza: the cold, winter season. It is interesting to note that the second peak is different from the other patterns. This could be due to a warmer temperature, but at least it seems that there is a definite trend from year to year.
+
+\section{Methodology}
+
+To analyze this data, I have decided to use a dynamic linear model (dlm). Dlm's are a common modeling choice to tackle data with a time componant such as the flu data. For this project, I considered a composition of two dlms. We can imagine that every dlm can be broken up into a composition of multiple dlms where each piece models a specific structure. So if we denote the overall dlm to be $y_t$ then it can be composed as follows:
+
+\begin{equation}
+y_t = y_t^{(1)} + y_t^{(2)}
+\end{equation}
+
+where $y_t^{(1)}$ is the dlm corresponding to the modeling of the mean and $y_t^{(2)}$ is the dlm dealing with the seasonal effects.
+
+\subsection{Model}
+
+Formally, the dlm is written:
+\begin{align*}
+y_t      &= F_t \theta_t + v_t     &v_t  &\sim N(0, V) \\
+\theta_t &= G_t \theta_t + w_t     &w_t  &\sim N(0, W) \\
+\theta_0 &\sim N(m_0, C_0)         &     &                   
+\end{align*}
+ where
+\begin{align*}
+F_t &= F = 
+\begin{bmatrix}
+1 & 0 & 1 & 0
+\end{bmatrix} &
+\theta_t &= (\mu_t,\beta_t,&\phantom{{}={}}&\phantom{{}={}}\alpha_{j},\alpha_{j-1},\ldots,\alpha_1,\alpha_s,\alpha_{s-1},\ldots,\alpha_{j+2})^T \\
+G_t &= G = 
+\begin{bmatrix}
+ cos(\omega_1) & sin(\omega_1) \\
+-sin(\omega_1) & cos(\omega_1)
+\end{bmatrix} &
+V &= \sigma^2 &
+W &= 
+\begin{bmatrix}
+0 & 0 \\
+0 & \sigma^2_{\beta} \\
+0 & 0 \\
+\end{bmatrix}
+\end{align*}
+where $t \in (1, \Sexpr{length(flu)})$.
+
+In order to fit this model in a completely Bayesian way, we need priors on $\sigma^2$, $\sigma^2_{\mu}$, and $\sigma^2_{\beta}$. We give them improper, conjugate inverse gamma priors:
+\begin{equation*}
+\sigma^2, \sigma^2_{\mu}, \sigma^2_{\beta} \overset{Ind}{\sim} Inv-Gamma(1,0)
+\end{equation*}
+
+These priors combined with the fact that $v_t = y_t - F \theta_t \sim N(0, V)$ and $w_t = \theta_t - G \theta_{t-1} \sim N(0, W)$ then lead to the following posteriors:
+
+\begin{align*}
+p(\sigma^2|\theta,y)         &\sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(y_t - F \theta_t)^2}{2}) \\
+p(\sigma^2_{\mu}|\theta,y)   &\sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(\theta_t - G \theta_{t-1})^2}{2}) \\
+p(\sigma^2_{\beta}|\theta,y) &\sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(\beta_t - \beta_{t-1})^2}{2})
+\end{align*}
+
+
+
+
+
+
+\section{Appendix: Figures, Tables and Extra Models}
+
+<<data_summary_table, echo=FALSE, message=FALSE, warning=FALSE, results="asis">>=
+sumdf <- data.frame(ili = fludat$ilitotal,
+                    tot = fludat$`total patients`,
+                    pili = fludat$ilitotal/fludat$`total patients`
+                    )
+names(sumdf) <- c("Num of ILI", "Total Patients", "Percent ILI")
+tmp <- melt(sumdf) %>%
+  group_by(variable) %>%
+  summarise(Min. = min(value),
+            Mean = mean(value),
+            Sd   = sd(value),
+            Max. = max(value))
+tmp <- data.frame(tmp)
+names(tmp)[1] <- "Var."
+print(xtable::xtable(tmp, caption = 'Summary statistics for the total number of patients seen with ILI symptoms, the total number of patients seen, and the percentage of patients with ILI symptoms. There is large variation in the total number of patients seen, and there is a pretty big difference in the number of patients with ILI symptoms and the total number of patients seen which leads to small percentages.', label='tab:data_summary'))
+@
+
+<<qqplots, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the qqplots of both the data on its original scale and the log transformed data. The log transformation on the percentage of patients seen showing ILI symptoms takes cares of problem of non-normality.", fig.height=4>>=
+tmpdf <- data.frame(ili=c(flu, log(flu)),
+                    transf = c(rep("Original", length(flu)), rep("Log", length(flu))))
+
+intsl <- tmpdf %>% group_by(transf) %>%
+  summarize(q25    = quantile(ili,0.25),
+            q75    = quantile(ili,0.75),
+            norm25 = qnorm( 0.25),
+            norm75 = qnorm( 0.75),
+            slope  = (q25 - q75) / (norm25 - norm75),
+            int    = q25 - slope * norm25) %>%
+  select(transf, slope, int)
+
+ggplot(tmpdf, aes(sample=ili)) + stat_qq(distribution=qnorm) + 
+           geom_abline(data=intsl, aes(intercept=int, slope=slope), col="black") +
+           facet_wrap(~transf, nrow=1, scales="free") + ylab("ILI") 
+
+
+@
+
+<<data_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the weekly logged percentage of patients showing Influenza-like-illness against time. There a clear seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza. Also the second peak is stands out from the other patterns.", fig.height=4>>=
+ggplot(fludat) + geom_point(aes(x=time, y=log(ilitotal/`total patients`))) + labs(y="Percentage of ILI Patients", x="Time") + theme_bw()
+@
+
+
+
+Here are the individual dlms used to create the combined dlms.
+\begin{align*}
+y_t^{(1)}      &= F_t^{(1)} \theta_t^{(1)} + v_t^{(1)}     &v_t^{(1)}  &\sim N(0, V^{(1)}) \\
+\theta_t^{(1)} &= G_t^{(1)} \theta_t^{(1)} + w_t^{(1)}     &w_t^{(1)}  &\sim N(0, W^{(1)}) \\
+\theta_0^{(1)} &\sim N(m_0^{(1)}, C_0^{(1)})               &           &                   
+\end{align*}
+ where
+\begin{align*}
+F_t^{(1)} &= F^{(1)} = 
+\begin{bmatrix}
+1 & 0
+\end{bmatrix} &
+G_t^{(1)} &= G^{(1)} = 
+\begin{bmatrix}
+1 & 1 \\
+1 & 0
+\end{bmatrix} &  & \\
+\theta_t^{(1)} &= 
+\begin{pmatrix}
+\mu_t & \beta_t
+\end{pmatrix}^T &
+V^{(1)} &= 0 & 
+W^{(1)} &= 
+\begin{bmatrix}
+\sigma^2_{\mu} & 0 \\
+0 & \sigma^2_{\beta}
+\end{bmatrix}
+\end{align*}
+and
+\begin{align*}
+y_t^{(2)}      &= F_t^{(2)} \theta_t^{(2)} + v_t^{(2)}     &v_t^{(2)}  &\sim N(0, V^{(2)}) \\
+\theta_t^{(2)} &= G_t^{(2)} \theta_t^{(2)} + w_t^{(2)}     &w_t^{(2)}  &\sim N(0, W^{(2)}) \\
+\theta_0^{(2)} &\sim N(m_0^{(2)}, C_0^{(2)})               &           &                   
+\end{align*}
+ where
+\begin{align*}
+F_t^{(2)} &= F^{(2)} = 
+\begin{bmatrix}
+1 & 0 & \cdots & 0
+\end{bmatrix} &
+G_t^{(2)} &= G^{(2)} = 
+\begin{bmatrix}
+-1 & -1 & \cdots & -1 & -1 \\
+1 & 0 & \cdots & 0 & 0 \\
+0 & 1 & \cdots & 0 & 0 \\
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+0 & 0 & \cdots & 0 & 0 \\
+0 & 0 & \vdots & 1& 0
+\end{bmatrix} &  & \\
+\theta_t^{(2)} &= 
+\begin{pmatrix}
+\alpha_{j},\alpha_{j-1},\ldots,\alpha_1,\alpha_s,\alpha_{s-1},\ldots,\alpha_{j+2}
+\end{pmatrix}^T &
+V^{(2)} &= \sigma^2 & 
+W^{(2)} &= 0
+\end{align*}
+where $j=t \mbox{ mod } s$
+
+
+
+
+
+\end{document}

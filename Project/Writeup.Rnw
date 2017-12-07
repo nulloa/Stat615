@@ -1,5 +1,16 @@
 \documentclass[12pt]{article}
+
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
 \usepackage{amsmath,amssymb,mathrsfs,fancyhdr,syntonly,lastpage,hyperref,enumitem,graphicx,setspace,multicol}
+\usepackage[colorinlistoftodos]{todonotes}
+
+\title{Bayesian Dynamic Linear Models and their application to Influenza Modeling}
+
+\author{Nehemias Ulloa}
+
+\date{\today}
+
 \setlength{\unitlength}{\textwidth}
 \hypersetup{colorlinks=true,urlcolor=red}
 
@@ -16,8 +27,11 @@
 
 
 \begin{document}
-\lhead{Project}
-\chead{STAT 615}
+\maketitle
+\thispagestyle{empty}
+
+\lhead{STAT 615}
+\chead{}
 \rhead{Nehemias Ulloa}
 
 
@@ -27,13 +41,15 @@ library("cdcfluview")
 library("plyr")
 library("dplyr")
 library("reshape2")
+library("boot")
 library("dlm")
+library("gridExtra")
 source("../../ServerScripts/R/CreateCDCDF.R")
 @
 
 \section{Introduction}
 
-Influenza is a common illness which many people will deal with at some point in there lives; a contagious illness which attacks the respiratory system. At best, it is a minor inconvenience, but at worst, it can lead to serious health problems including death especially among the young, elderly and pregnant women. Vaccines are a simple and effective way of preventing the spread of influenza. The responsibility to create and distribute the vaccine for the flu falls on the Centers for Disease Control and Prevention (CDC). Because of all of this, increased effort has been placed on understanding influenza via increased monitoring and research by the CDC. One specific facet of the research is trying to model and predict different facets of influenza. 
+Influenza is a common illness which many people will deal with at some point in there lives; a contagious illness which attacks the respiratory system. At best, it is a minor inconvenience, but at worst, it can lead to serious health problems including death especially among the young, elderly and pregnant women. Vaccines are a simple and effective way of preventing the spread of influenza. The responsibility to create and distribute the vaccine for the flu falls on the Centers for Disease Control and Prevention (CDC). Because of all of this, increased effort has been placed on understanding influenza via increased monitoring and research by the CDC. One specific facet of the research is trying to model and predict different facets of influenza \cite{cdcfluweb}. This project will focus on the forcasting facet of studying influenza. 
 
 
 <<data_setup, echo=FALSE, message=FALSE, warning=FALSE>>=
@@ -42,8 +58,8 @@ fludat$REGION <- as.factor(fludat$REGION)
 fludat <- dplyr::filter(fludat, REGION=="Region 9")
 names(fludat) <- tolower(names(fludat))
 fludat$time <- 1:nrow(fludat)
-flu <- as.numeric(unlist(fludat[,c("ilitotal")]))/as.numeric(unlist(fludat[,c("total patients")]))
-fluts <- ts(fludat$ilitotal, start=c(2010, 40), frequency = 52)
+flu <- fludat$ilitotal/fludat$`total patients`
+fluts <- ts(fludat$ilitotal/fludat$`total patients`, start=c(2010, 40), frequency = 52)
 @
 
 \section{Data}
@@ -58,63 +74,282 @@ In Figure \ref{fig:data_plot}, the weekly logged percentage of patients with Inf
 
 \section{Methodology}
 
-To analyze this data, I have decided to use a dynamic linear model (dlm). Dlm's are a common modeling choice to tackle data with a time componant such as the flu data. For this project, I considered a composition of two dlms. We can imagine that every dlm can be broken up into a composition of multiple dlms where each piece models a specific structure. So if we denote the overall dlm to be $y_t$ then it can be composed as follows:
+To analyze this data, I have decided to use a dynamic linear model (DLM). Dlm's are a common modeling choice to tackle data with a time component such as the flu data. For this project, I considered a composition of two DLMs. We can imagine that every DLM can be broken up into a composition of multiple DLMs where each piece models a specific structure \cite{dlmbook}. So if we denote the overall DLM to be $y_t$ then it can be composed as follows:
 
 \begin{equation}
 y_t = y_t^{(1)} + y_t^{(2)}
 \end{equation}
 
-where $y_t^{(1)}$ is the dlm corresponding to the modeling of the mean and $y_t^{(2)}$ is the dlm dealing with the seasonal effects.
+where $y_t^{(1)}$ is the component corresponding to the modeling of the mean and $y_t^{(2)}$ is the component dealing with the seasonal effects.
 
 \subsection{Model}
 
-Formally, the dlm is written:
-\begin{align*}
-y_t      &= F_t \theta_t + v_t     &v_t  &\sim N(0, V) \\
-\theta_t &= G_t \theta_t + w_t     &w_t  &\sim N(0, W) \\
-\theta_0 &\sim N(m_0, C_0)         &     &                   
-\end{align*}
+Formally, the DLM is written:
+\begin{align}
+y_t      &= F_t \theta_t + v_t     &v_t  &\sim N(0, V) \nonumber \\
+\theta_t &= G_t \theta_t + w_t     &w_t  &\sim N(0, W) \nonumber \\
+\theta_0 &\sim N(m_0, C_0)         &     &                    
+\end{align}
  where
 \begin{align*}
 F_t &= F = 
 \begin{bmatrix}
 1 & 0 & 1 & 0
 \end{bmatrix} &
-\theta_t &= (\mu_t,\beta_t,&\phantom{{}={}}&\phantom{{}={}}\alpha_{j},\alpha_{j-1},\ldots,\alpha_1,\alpha_s,\alpha_{s-1},\ldots,\alpha_{j+2})^T \\
+\theta_t &= (\mu_t,\beta_t,S_1(t),S_1^*(t))^T \\
 G_t &= G = 
-\begin{bmatrix}
- cos(\omega_1) & sin(\omega_1) \\
--sin(\omega_1) & cos(\omega_1)
-\end{bmatrix} &
+\left[ 
+\begin{array}{c@{}c}
+ \left[\begin{array}{cc}
+         1 & 1 \\
+         0 & 1 \\
+  \end{array}\right] & \mathbf{0} \\
+  \mathbf{0} & \left[\begin{array}{cc}
+                        cos(\omega_1) & sin(\omega_1) \\
+                        -sin(\omega_1) & cos(\omega_1) \\
+                      \end{array}\right] \\
+\end{array}\right]  &
 V &= \sigma^2 &
 W &= 
-\begin{bmatrix}
-0 & 0 \\
-0 & \sigma^2_{\beta} \\
-0 & 0 \\
-\end{bmatrix}
+\left[ 
+\begin{array}{c@{}c}
+ \left[\begin{array}{cc}
+         0 & 0 \\
+         0 & \sigma^2_{\beta} \\
+  \end{array}\right] & \mathbf{0} \\
+  \mathbf{0} & \left[\begin{array}{cc}
+                        0 & 0 \\
+                        0 & 0 \\
+                      \end{array}\right] \\
+\end{array}\right]
 \end{align*}
 where $t \in (1, \Sexpr{length(flu)})$.
 
-In order to fit this model in a completely Bayesian way, we need priors on $\sigma^2$, $\sigma^2_{\mu}$, and $\sigma^2_{\beta}$. We give them improper, conjugate inverse gamma priors:
-\begin{equation*}
-\sigma^2, \sigma^2_{\mu}, \sigma^2_{\beta} \overset{Ind}{\sim} Inv-Gamma(1,0)
-\end{equation*}
-
-These priors combined with the fact that $v_t = y_t - F \theta_t \sim N(0, V)$ and $w_t = \theta_t - G \theta_{t-1} \sim N(0, W)$ then lead to the following posteriors:
-
+In order to fit this model in a completely Bayesian way, we need priors on $\sigma^2$ and $\sigma^2_{\beta}$. The priors are conjugate inverse gamma distributions such that the mean of the distributions line up with the mle's of the parameters.
 \begin{align*}
-p(\sigma^2|\theta,y)         &\sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(y_t - F \theta_t)^2}{2}) \\
-p(\sigma^2_{\mu}|\theta,y)   &\sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(\theta_t - G \theta_{t-1})^2}{2}) \\
-p(\sigma^2_{\beta}|\theta,y) &\sim Inv-Gamma(\frac{T}{2} + 1, \frac{\sum_t(\beta_t - \beta_{t-1})^2}{2})
+\sigma^2         &\overset{Ind}{\sim} Inv-Gamma(2,0.007) \\
+\sigma^2_{\beta} &\overset{Ind}{\sim} Inv-Gamma(2,0.002)
 \end{align*}
 
+These priors combined with the fact that $v_t = y_t - F \theta_t \sim N(0, V)$ and $w_t = \theta_t - G \theta_{t-1} \sim N(0, W)$ then lead to the following conditional distributions:
+
+\begin{align}
+\sigma^2|\theta,y         &\sim Inv-Gamma(\frac{T}{2} + 2, \frac{\sum_t(y_t - F \theta_t)^2}{2} + 0.007) \label{eq:sigmafullcond} \\ 
+\sigma^2_{\beta}|\theta,y &\sim Inv-Gamma(\frac{T}{2} + 2, \frac{\sum_t(\beta_t - \beta_{t-1})^2}{2} + 0.002) \label{eq:sigmabetafullcond}
+\end{align}
+
+\subsection{Model Fitting}
+To sample from the posterior of both $\theta_0, \theta_1, \cdots, \theta_{208}$, $\sigma^2$, and $\sigma^2_{\beta}$ an MCMC was constructed via a Gibbs sampler. The steps taken in the sampler are as follows:
+\begin{enumerate}
+  \item[] Start with initial values $\sigma^{2 \, (0)}$ and $\sigma^{2 \, (0)}_{\beta}$ (mle values were used as starting values)
+  \item Sample $\theta_0^{(i)}, \theta_1^{(i)}, \cdots, \theta_{208}^{(i)}$ jointly by using backwards-forwards sampling (done via the \verb|DLMBSample| function in the \verb|DLM| package in \verb|R| \cite{dlmpackage}) using $\sigma^{2 \, (i)}$ and $\sigma^{2 \, (i)}_{\beta}$
+  \item Sample $\sigma^{2 \, (i)}$ and $\sigma^{2 \, (i)}_{\beta}$ via their full conditionals (Eq \ref{eq:sigmafullcond} and Eq \ref{eq:sigmabetafullcond}, respectively) using $\theta_0^{(i)}, \theta_1^{(i)}, \cdots, \theta_{208}^{(i)}$
+\end{enumerate}
 
 
+\section{Results}
+<<run_mcmc, echo=FALSE, eval=FALSE>>=
+buildFun <- function(x){ dlmModTrig(om=52, q = 1, dV = exp(x[1])) +
+    dlmModPoly(2, dV = 0, dW = c(0, exp(x[2])), m0=rep(0,2), C0=100*diag(2)) }
+fit <- dlmMLE(logit(fluts), parm = c(1,1), build = buildFun)
+sval1 <- list(s=exp(fit$par[1]), b=exp(fit$par[2]))
+
+buildFun <- function(x){ dlmModTrig(om=52, q = 2, dV = exp(x[1])) +
+    dlmModPoly(2, dV = 0, dW = c(0, exp(x[2])), m0=rep(0,2), C0=100*diag(2)) }
+fit <- dlmMLE(logit(fluts), parm = c(1,1), build = buildFun)
+sval2 <- list(s=exp(fit$par[1]), b=exp(fit$par[2]))
 
 
+# Using 1 Harmonic
+mcmc1 <- function(y, niter, sval){
+  # Summary Stats
+  n <- length(y)
+  
+  # setup storage
+  harmonic1a <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  harmonic1b <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  mu         <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  beta       <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  phikeep    <- matrix(data=NA, ncol=length(sval), nrow=niter)
+  
+  # setup initialization
+  sigma  <- sval$s
+  sigmab  <- sval$b
+  
+  for(i in 1:niter){
+    if(i%%(niter/10) == 0){print(paste(100*i/niter,"% of iterations complete", sep=""))}
+    # sample theta jointly via backwards sampling
+    dlmM    <- dlm::dlmModTrig(om=52, q = 1, dV = sigma) + 
+      dlm::dlmModPoly(2, dV = 0, dW = c(0, sigmab), m0=rep(0,2), C0=100*diag(2))
+    FiltD   <- dlm::dlmFilter(y, dlmM)
+    bsample <- dlm::dlmBSample(FiltD)
+    
+    # sample phi
+    SSE  <- sum((y - (bsample[-1,1] + bsample[-1,3]))^2)
+    SSEb  <- sum(diff(bsample[,4])^2)
+    
+    sigma <- MCMCpack::rinvgamma(1, (n/2)+2, (SSE/2) + 0.007)
+    sigmab <- MCMCpack::rinvgamma(1, (n/2)+2, (SSEb/2) + 0.002)
+    
+    # save samples
+    harmonic1a[i,]  <- c(bsample[,1])
+    harmonic1b[i,]  <- c(bsample[,2])
+    mu[i,]          <- c(bsample[,3])
+    beta[i,]        <- c(bsample[,4])
+    phikeep[i,]     <- c(sigma, sigmab)
+  }
+  
+  # end of sampling mechanism
+  return(list("harmonic1a"=harmonic1a,"harmonic1b"=harmonic1b,"mu"=mu,"beta"=beta, "phi"=phikeep))
+}
+time1 <- system.time(res1 <- mcmc1(logit(fluts), 10000, sval1))
 
-\section{Appendix: Figures, Tables and Extra Models}
+# Using 2 Harmonics
+mcmc2 <- function(y, niter, sval){
+  # Summary Stats
+  n <- length(y)
+  
+  # setup storage
+  harmonic1a <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  harmonic1b <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  harmonic2a <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  harmonic2b <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  mu         <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  beta       <- matrix(data=NA, ncol=(n+1), nrow=niter)
+  phikeep    <- matrix(data=NA, ncol=length(sval), nrow=niter)
+  
+  
+  # setup initialization
+  #sigmam  <- sval$vm
+  sigma  <- sval$s
+  sigmab  <- sval$b
+  
+  for(i in 1:niter){
+    if(i%%(niter/10) == 0){print(paste(100*i/niter,"% of iterations complete", sep=""))}
+    # sample theta jointly via backwards sampling
+    dlmM    <- dlm::dlmModTrig(om=52, q = 2, dV = sigma) + 
+      dlm::dlmModPoly(2, dV = 0, dW = c(0, sigmab), m0=rep(0,2), C0=100*diag(2))
+    FiltD   <- dlm::dlmFilter(y, dlmM)
+    bsample <- dlm::dlmBSample(FiltD)
+    
+    # sample phi
+    SSE  <- sum((y - (bsample[-1,1] + bsample[-1,3] + bsample[-1,5]))^2)
+    SSEb  <- sum(diff(bsample[,6])^2)
+    
+    sigma <- MCMCpack::rinvgamma(1, (n/2)+2, (SSE/2) + 0.007)
+    sigmab <- MCMCpack::rinvgamma(1, (n/2)+2, (SSEb/2) + 0.002)
+    
+    # save samples
+    harmonic1a[i,]  <- c(bsample[,1])
+    harmonic1b[i,]  <- c(bsample[,2])
+    harmonic2a[i,]  <- c(bsample[,3])
+    harmonic2b[i,]  <- c(bsample[,4])
+    mu[i,]          <- c(bsample[,5])
+    beta[i,]        <- c(bsample[,6])
+    phikeep[i,]     <- c(sigma, sigmab)
+  }
+  
+  # end of sampling mechanism
+  return(list("harmonic1a"=harmonic1a,"harmonic1b"=harmonic1b,
+              "harmonic2a"=harmonic2a,"harmonic2b"=harmonic2b,
+              "mu"=mu,"beta"=beta, "phi"=phikeep))
+}
+time2 <- system.time(res2 <- mcmc2(logit(fluts), 10000, sval2))
+
+save(res1, res2, file="HarmLTSamples.RData")
+@
+
+
+<<load_mcmc, echo=FALSE, message=FALSE, warning=FALSE>>=
+load("HarmLTSamples.RData")
+@
+
+We used the constructed Gibbs sampler to obtain samples from the posterior distributions of our unobserved states. These posterior distributions were then used to obtain estimates of the all the states and their $95\%$ credible intervals. One chain was run for $10,000$ iterations with no burn-in. Since only one chain was ran, the Geweke diagnostic was used to check for evidence on non-convergence. Geweke's diagnostics for the harmonics ($S_{1,0},\cdots,S_{1,208}$), the mean ($\mu_0,\cdots,\mu_{208}$), and slope ($\beta_0,\cdots,\beta_{208}$) in the linear trend components are plotted in Figure \ref{fig:gewekediag}. There are not any major causes for concern; some of the $\beta$ diagnostics might be on the higher side, but they look fine for the most part. In Figure \ref{fig:vardiag}, the traceplots for $\sigma$ and $\sigma_{\beta}$ on the top half and the posterior plots on the bottom with the priors overlay-ed as red lines. There nothing that shows problems with non-convergence.
+
+
+<<Make_Predictions, echo=FALSE, message=FALSE, warning=FALSE, eval=FALSE>>=
+true.data <- subset(get_cdc_data(2014), REGION=="Region 9")[1:4,]
+true.data <- (true.data$TotILI/true.data$TotPat)
+
+flu.model = DLMModTrig(om=52, q = 1, dV = 1000) + 
+  DLMModPoly(2, dV = 0, dW = c(0, 0), m0=rep(0,2), C0=100*diag(2))
+flu.model2 = DLMModTrig(om=52, q = 2, dV = 1000) + 
+  DLMModPoly(2, dV = 0, dW = c(0, 2), m0=rep(0,2), C0=100*diag(2))
+
+
+wk1pred1 <- wk1pred2 <- wk2pred1 <- wk2pred2 <- wk3pred1 <- wk3pred2 <- wk4pred1 <- wk4pred2 <- NULL
+wk1state1 <- wk2state1 <- wk3state1 <- wk4state1 <- matrix(data=NA, ncol=4, nrow=nrow(res2$phi))
+wk1state2 <- wk2state2 <- wk3state2 <- wk4state2 <- matrix(data=NA, ncol=6, nrow=nrow(res2$phi))
+mse1wk1 <- mse1wk2 <- mse1wk3 <- mse1wk4 <- mse2wk1 <- mse2wk2 <- mse2wk3 <- mse2wk4 <- NULL
+for(i in 1:nrow(res2$phi)){
+  # Setting up theta_t for both models
+  thetat1 <- c(res1$harmonic1a[i,209], res1$harmonic1b[i,209], res1$mu[i,209], res1$beta[i,209])
+  thetat2 <- c(res2$harmonic1a[i,209], res2$harmonic1b[i,209], res2$harmonic2a[i,209], res2$harmonic2b[i,209], res2$mu[i,209], res2$beta[i,209])
+  
+  # Getting 1 wk ahead predictions
+  wk1state1[i,] <- MASS::mvrnorm(1, flu.model$GG %*% thetat1, diag(c(0,0,0,res1$phi[i,2])) )
+  wk1state2[i,] <- MASS::mvrnorm(1, flu.model2$GG %*% thetat2, diag(c(0,0,0,0,0,res2$phi[i,2])) )
+  wk1pred1[i] <- rnorm(1, flu.model$FF %*% wk1state1[i,], res1$phi[i,1])
+  wk1pred2[i] <- rnorm(1, flu.model2$FF %*% wk1state2[i,], res2$phi[i,1])
+  
+  # Getting 2 wk ahead predictions
+  wk2state1[i,] <- MASS::mvrnorm(1, flu.model$GG %*%  wk1state1[i,], diag(c(0,0,0,res1$phi[i,2])) )
+  wk2state2[i,] <- MASS::mvrnorm(1, flu.model2$GG %*% wk1state2[i,], diag(c(0,0,0,0,0,res2$phi[i,2])) )
+  wk2pred1[i] <- rnorm(1, flu.model$FF %*%  wk2state1[i,], res1$phi[i,1])
+  wk2pred2[i] <- rnorm(1, flu.model2$FF %*% wk2state2[i,], res2$phi[i,1])
+  
+  # Getting 3 wk ahead predictions
+  wk3state1[i,] <- MASS::mvrnorm(1, flu.model$GG %*%  wk2state1[i,], diag(c(0,0,0,res1$phi[i,2])) )
+  wk3state2[i,] <- MASS::mvrnorm(1, flu.model2$GG %*% wk2state2[i,], diag(c(0,0,0,0,0,res2$phi[i,2])) )
+  wk3pred1[i] <- rnorm(1, flu.model$FF %*%  wk3state1[i,], res1$phi[i,1])
+  wk3pred2[i] <- rnorm(1, flu.model2$FF %*% wk3state2[i,], res2$phi[i,1])
+  
+  # Getting 4 wk ahead predictions
+  wk4state1[i,] <- MASS::mvrnorm(1, flu.model$GG %*%  wk3state1[i,], diag(c(0,0,0,res1$phi[i,2])) )
+  wk4state2[i,] <- MASS::mvrnorm(1, flu.model2$GG %*% wk3state2[i,], diag(c(0,0,0,0,0,res2$phi[i,2])) )
+  wk4pred1[i] <- rnorm(1, flu.model$FF %*%  wk4state1[i,], res1$phi[i,1])
+  wk4pred2[i] <- rnorm(1, flu.model2$FF %*% wk4state2[i,], res2$phi[i,1])
+}
+
+mse1wk1 <- (mean(inv.logit(wk1pred1)) - true.data[1])^2
+mse1wk2 <- (mean(inv.logit(wk2pred1)) - true.data[2])^2
+mse1wk3 <- (mean(inv.logit(wk3pred1)) - true.data[3])^2
+mse1wk4 <- (mean(inv.logit(wk4pred1)) - true.data[4])^2
+mse2wk1 <- (mean(inv.logit(wk1pred2)) - true.data[1])^2
+mse2wk2 <- (mean(inv.logit(wk2pred2)) - true.data[2])^2
+mse2wk3 <- (mean(inv.logit(wk3pred2)) - true.data[3])^2
+mse2wk4 <- (mean(inv.logit(wk4pred2)) - true.data[4])^2
+
+save(wk1pred1, wk1pred2, wk2pred1, wk2pred2, wk3pred1, wk3pred2, wk4pred1, wk4pred2, 
+     mse1wk1, mse1wk2, mse1wk3, mse1wk4, mse2wk1, mse2wk2, mse2wk3, mse2wk4, true.data,
+     file="preds.RData")
+@
+<<load_predictions, echo=FALSE, message=FALSE, warning=FALSE>>=
+load("preds.RData")
+@
+
+\section{Discussion}
+In this project, we set out to model the influenza data using a DLM and make forecasts. A DLM was fit using with 2 components: seasonal trend using harmonics and a linear trend. To decide whether the seasonal trend component should use one harmonic or two, predictions and their residuals were looked at. The predictions were calculated by making draws from the posterior predictive distribution $p(y_{t+1} | y_{1:t})$ where
+\begin{equation}
+p(y_{t+1} | y_{1:t}) = \int p(y_{t+1}|\theta_{t+1}, \sigma^2) p(\theta_{t+1}|\theta_t, \sigma^2_{\beta}) p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t) d\theta_t d\sigma^2 d\sigma^2_{\beta} \label{postpred}
+\end{equation}
+
+To get draws from Eq \ref{postpred}, the draws of $p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t)$ were taken then plugged into the evolution equation ($p(\theta_{t+1}|\theta_t, \sigma^2_{\beta})$) which was then plugged into the observation equation ($p(y_{t+1}|\theta_{t+1}, \sigma^2)$). In Figure \ref{fig:prediction_plots}, the week ahead predictions generated by the two different DLMs. Based on this graph, the predictions look as we would expect with the $95\%$ credible intervals are increasing. Although in Figure \ref{fig:pred_season_data}, when the predictions and their credible intervals are posted on the full scale of the data, the error of the predictions are put into perspective. The residual plot for the forecasts in Figure \ref{fig:residual_plots} show the same phenomena. Looking at the forecasting results, there is not much difference between the DLM using two harmonics and the DLM using one harmonic. So when a simple model preforms similar to a more complex model, the convention is to go with the simpler model; in this project, that is the DLM using one harmonic. 
+
+
+\section{Future Work}
+In this project only a small subset of the data was used. It would be beneficial to use all the data available; this would mean using the 10 regions plus national, and using all the years available. Using multiple regions could be accomplished by using a seemingly unrelated time series (SUSTE) model, but using all the years would be less obvious since the frequency in the time series is non-constant. Some years there are 52 observations per year while others there are 53 observations per year. It would also be good to get estimates of forecasting error other than residuals. This would be possible by calculating the squared prediction error of 1 step forecasts sequentially by limiting the data set one point at a time. This project gives an introduction to using DLMs on this data set, but many extensions are possible.
+
+
+%%%%%
+% Citations
+%%%%%
+\nocite{*}
+\bibliography{projectbib}{}
+\bibliographystyle{plain}
+
+
+\section*{Appendix: Figures, Tables and Extra Models}
 
 <<data_summary_table, echo=FALSE, message=FALSE, warning=FALSE, results="asis">>=
 sumdf <- data.frame(ili = fludat$ilitotal,
@@ -133,9 +368,9 @@ names(tmp)[1] <- "Var."
 print(xtable::xtable(tmp, caption = 'Summary statistics for the total number of patients seen with ILI symptoms, the total number of patients seen, and the percentage of patients with ILI symptoms. There is large variation in the total number of patients seen, and there is a pretty big difference in the number of patients with ILI symptoms and the total number of patients seen which leads to small percentages.', label='tab:data_summary'))
 @
 
-<<qqplots, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the qqplots of both the data on its original scale and the log transformed data. The log transformation on the percentage of patients seen showing ILI symptoms takes cares of problem of non-normality.", fig.height=4>>=
-tmpdf <- data.frame(ili=c(flu, log(flu)),
-                    transf = c(rep("Original", length(flu)), rep("Log", length(flu))))
+<<qqplots, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the qqplots of both the data on its original scale and the logit transformed data. The log transformation on the percentage of patients seen showing ILI symptoms takes cares of problem of non-normality.", fig.height=4>>=
+tmpdf <- data.frame(ili=c(flu, logit(flu)),
+                    transf = c(rep("Original", length(flu)), rep("Logit", length(flu))))
 
 intsl <- tmpdf %>% group_by(transf) %>%
   summarize(q25    = quantile(ili,0.25),
@@ -153,72 +388,135 @@ ggplot(tmpdf, aes(sample=ili)) + stat_qq(distribution=qnorm) +
 
 @
 
-<<data_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the weekly logged percentage of patients showing Influenza-like-illness against time. There a clear seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza. Also the second peak is stands out from the other patterns.", fig.height=4>>=
-ggplot(fludat) + geom_point(aes(x=time, y=log(ilitotal/`total patients`))) + labs(y="Percentage of ILI Patients", x="Time") + theme_bw()
+<<data_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the weekly percentage of patients showing Influenza-like-illness against time on the logit scale. There a clear seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza. Also the second peak is stands out from the other patterns.", fig.height=4>>=
+ggplot(fludat) + geom_point(aes(x=time, y=logit(ilitotal/`total patients`))) + labs(y="Percentage of ILI Patients", x="Time") + theme_bw()
 @
 
 
+<<gewekediag, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="This histogram shows the Geweke diagnostics for all the harmonics ($S_{1,0},\\cdots,S_{1,208}$), the mean ($\\mu_{0},\\cdots,\\mu_{208}$), and slope ($\\beta_0,\\cdots,\\beta_{208}$) in the linear trend components.", fig.height=4>>=
+# Geweke Diagnostics
+gd <- data.frame(Harmonic1a=as.numeric(coda::geweke.diag(coda::mcmc(res1$harmonic1a))$z),
+                 mu=as.numeric(coda::geweke.diag(coda::mcmc(res1$mu))$z),
+                 beta=as.numeric(coda::geweke.diag(coda::mcmc(res1$beta))$z))
+mgd <- melt(gd)
+ggplot(mgd) + geom_histogram(aes(x=value)) + facet_wrap(~variable) + theme_bw()
+@
 
-Here are the individual dlms used to create the combined dlms.
-\begin{align*}
-y_t^{(1)}      &= F_t^{(1)} \theta_t^{(1)} + v_t^{(1)}     &v_t^{(1)}  &\sim N(0, V^{(1)}) \\
-\theta_t^{(1)} &= G_t^{(1)} \theta_t^{(1)} + w_t^{(1)}     &w_t^{(1)}  &\sim N(0, W^{(1)}) \\
-\theta_0^{(1)} &\sim N(m_0^{(1)}, C_0^{(1)})               &           &                   
-\end{align*}
- where
-\begin{align*}
-F_t^{(1)} &= F^{(1)} = 
-\begin{bmatrix}
-1 & 0
-\end{bmatrix} &
-G_t^{(1)} &= G^{(1)} = 
-\begin{bmatrix}
-1 & 1 \\
-1 & 0
-\end{bmatrix} &  & \\
-\theta_t^{(1)} &= 
-\begin{pmatrix}
-\mu_t & \beta_t
-\end{pmatrix}^T &
-V^{(1)} &= 0 & 
-W^{(1)} &= 
-\begin{bmatrix}
-\sigma^2_{\mu} & 0 \\
-0 & \sigma^2_{\beta}
-\end{bmatrix}
-\end{align*}
-and
-\begin{align*}
-y_t^{(2)}      &= F_t^{(2)} \theta_t^{(2)} + v_t^{(2)}     &v_t^{(2)}  &\sim N(0, V^{(2)}) \\
-\theta_t^{(2)} &= G_t^{(2)} \theta_t^{(2)} + w_t^{(2)}     &w_t^{(2)}  &\sim N(0, W^{(2)}) \\
-\theta_0^{(2)} &\sim N(m_0^{(2)}, C_0^{(2)})               &           &                   
-\end{align*}
- where
-\begin{align*}
-F_t^{(2)} &= F^{(2)} = 
-\begin{bmatrix}
-1 & 0 & \cdots & 0
-\end{bmatrix} &
-G_t^{(2)} &= G^{(2)} = 
-\begin{bmatrix}
--1 & -1 & \cdots & -1 & -1 \\
-1 & 0 & \cdots & 0 & 0 \\
-0 & 1 & \cdots & 0 & 0 \\
-\vdots & \vdots & \vdots & \ddots & \vdots \\
-0 & 0 & \cdots & 0 & 0 \\
-0 & 0 & \vdots & 1& 0
-\end{bmatrix} &  & \\
-\theta_t^{(2)} &= 
-\begin{pmatrix}
-\alpha_{j},\alpha_{j-1},\ldots,\alpha_1,\alpha_s,\alpha_{s-1},\ldots,\alpha_{j+2}
-\end{pmatrix}^T &
-V^{(2)} &= \sigma^2 & 
-W^{(2)} &= 0
-\end{align*}
-where $j=t \mbox{ mod } s$
+<<vardiag, echo=FALSE, warning=FALSE, message=FALSE, fig.cap='This plot shows the traceplots for $\\sigma$ and $\\sigma_{\\beta}$ on the top half and the posterior plots for $\\sigma$ and $\\sigma_{\\beta}$ on the bottom with the priors overlayed as red lines. There are no signs for concern; nothing that shows problems with non-convergence.', fig.height=4>>=
+# traceplots
+mphi2 <- melt(matrix(as.numeric(res2$phi[,]), ncol=2, byrow=F))
+mphi2$Var2 <- factor(mphi2$Var2)
+levels(mphi2$Var2) <- c("sigma", "sigma_beta")
+
+p1 <- ggplot(mphi2) + geom_line(aes(x=Var1, y=sqrt(value))) + facet_wrap(~Var2, scales = "free") + 
+  labs(x="Iterations", y="") + theme_bw()
 
 
+# prior to posterior plots
+d1 <- melt(data.frame(sigma=res2$phi[,1], sigma_beta=res2$phi[,2]))
+dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
+dsqrtinvgamma = function(x, a, b) dinvgamma(x^2, a, b)*2*x
 
+p2 <- ggplot(data.frame(sigma=res2$phi[,1])) + 
+  geom_histogram(aes(x = sqrt(sigma), y = ..density..), bins = 100) + 
+  stat_function(fun = dsqrtinvgamma, color = "red", args = list(a = 2, b = 0.007)) +
+  theme_bw() + labs(x="sigma", y="")
+
+p3 <- ggplot(data.frame(sigma_beta=res2$phi[,2])) + 
+  geom_histogram(aes(x = sqrt(sigma_beta), y = ..density..), bins = 100) + 
+  stat_function(fun = dsqrtinvgamma, color = "red", args = list(a = 2, b = 0.002)) +
+  theme_bw() + labs(x="sigma_beta", y="")
+
+lay <- rbind(c(1,1),
+             c(2,3))
+grid.arrange(p1, p2, p3, layout_matrix = lay)
+@
+
+
+<<post_state_plots, echo=FALSE, message=FALSE, fig.cap="This shows the posterior (smoothing) plots for the equal-tail $95\\%$ credible interval for the states to compare using 1 or 2 harmonics. There is not much difference in features between the two models, so the simpler model (using 1 harmonic) was used in this project.", fig.height=6>>=
+# Model Fits
+n <- length(flu)
+L1 <- U1 <- esttheta <- L2 <- U2 <- esttheta2 <- LT <- UT <- estT <- LT2 <- UT2 <- estT2 <- NULL
+for(i in 1:n){
+  L1[i]       <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.025)
+  U1[i]       <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.975)
+  esttheta[i] <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.5)
+  LT[i]   <- quantile(inv.logit(res1$mu[,i+1]), probs=0.025)
+  UT[i]   <- quantile(inv.logit(res1$mu[,i+1]), probs=0.975)
+  estT[i] <- quantile(inv.logit(res1$mu[,i+1]), probs=0.5)
+  L2[i]        <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.025)
+  U2[i]        <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.975)
+  esttheta2[i] <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.5)
+  LT2[i]   <- quantile(inv.logit(res2$mu[,i+1]), probs=0.025)
+  UT2[i]   <- quantile(inv.logit(res2$mu[,i+1]), probs=0.975)
+  estT2[i] <- quantile(inv.logit(res2$mu[,i+1]), probs=0.5)
+}
+
+dat1 <- data.frame(L=L1, U=U1, x=seq(1,n), ogy=(flu), est=esttheta, LT=LT, UT=UT, estT=estT, num.harmonic="1")
+dat2 <- data.frame(L=L2, U=U2, x=seq(1,n), ogy=(flu), est=esttheta2, LT=LT2, UT=UT2, estT=estT2, num.harmonic="2")
+ggplot(rbind(dat1, dat2)) + 
+  geom_ribbon(aes(x=x, ymin=L, ymax = U, fill=num.harmonic), alpha=0.75) + 
+  geom_line(aes(x=x, y=est, color=num.harmonic)) +
+  #geom_ribbon(aes(x=x, ymin=LT, ymax = UT, fill=harmonic), alpha=0.25) + 
+  #geom_line(aes(x=x, y=estT, color=harmonic)) +
+  geom_point(aes(x=x, y=ogy)) + 
+  labs(y="Percentage of ILI Patients", x="Time") + 
+  theme_bw() + facet_grid(num.harmonic~.)
+@
+
+
+<<residual_plots, echo=FALSE, message=FALSE, fig.cap="This is a residual plot for the forecasts made using the two DLMs. Both DLMs preform about the same in all predictions.", fig.height=4>>=
+# Model Fits
+mse1 <- data.frame(wkahead=c(1:4), mspe=c(mse1wk1, mse1wk2, mse1wk3, mse1wk4), num.harmonic="1")
+mse2 <- data.frame(wkahead=c(1:4), mspe=c(mse2wk1, mse2wk2, mse2wk3, mse2wk4), num.harmonic="2")
+ggplot(rbind(mse1, mse2)) +
+  geom_point(aes(x=wkahead, y=sqrt(mspe), color=num.harmonic)) + 
+  theme_bw() + labs(y="Residuals")
+@
+
+<<prediction_plots, echo=FALSE, message=FALSE, fig.cap="This plot is of the week ahead predictions generated by the two different DLMs. On this scale, the predictions seem to be alright but the $95\\%$ credible intervals are increasing although this is what we would expect.", fig.height=6>>=
+
+preds1 <- data.frame(week=c(1:4), ogy=true.data, 
+                     est=c(mean(inv.logit(wk1pred1)), mean(inv.logit(wk2pred1)), 
+                           mean(inv.logit(wk3pred1)), mean(inv.logit(wk4pred1))),
+                     upper=c(quantile(inv.logit(wk1pred1), probs=0.975),quantile(inv.logit(wk2pred1), probs=0.975),
+                             quantile(inv.logit(wk3pred1), probs=0.975),quantile(inv.logit(wk4pred1), probs=0.975)),
+                     lower=c(quantile(inv.logit(wk1pred1), probs=0.025),quantile(inv.logit(wk2pred1), probs=0.025),
+                             quantile(inv.logit(wk3pred1), probs=0.025),quantile(inv.logit(wk4pred1), probs=0.025)),
+                     num.harmonic="1"
+                     )
+
+preds2 <- data.frame(week=c(1:4), ogy=true.data, 
+                     est=c(mean(inv.logit(wk1pred2)), mean(inv.logit(wk2pred2)), 
+                           mean(inv.logit(wk3pred2)), mean(inv.logit(wk4pred2))),
+                     upper=c(quantile(inv.logit(wk1pred2), probs=0.975),quantile(inv.logit(wk2pred2), probs=0.975),
+                             quantile(inv.logit(wk3pred2), probs=0.975),quantile(inv.logit(wk4pred2), probs=0.975)),
+                     lower=c(quantile(inv.logit(wk1pred2), probs=0.025),quantile(inv.logit(wk2pred2), probs=0.025),
+                             quantile(inv.logit(wk3pred2), probs=0.025),quantile(inv.logit(wk4pred2), probs=0.025)),
+                     num.harmonic="2"
+                     )
+
+
+
+ggplot(rbind(preds1, preds2)) + 
+  geom_ribbon(aes(x=week, ymin=lower, ymax = upper, fill=num.harmonic), alpha=0.25) + 
+  geom_line(aes(x=week, y=est, color=num.harmonic)) +
+  geom_point(aes(x=week, y=(ogy))) + 
+  labs(y="Percentage of ILI Patients", x="Time") + 
+  theme_bw() + facet_grid(num.harmonic~.)
+@
+
+
+<<pred_season_data, echo=FALSE, message=FALSE, fig.cap="This plot of the week ahead predictions generated by the two different DLMs has been overlayed on the data for the predicted 2014 season. This scale highlights the errors in the predictions.", fig.height=6>>=
+new.season.dat <- subset(get_cdc_data(2014), REGION=="Region 9")
+
+ggplot() + 
+  geom_point(aes(x=c(1:nrow(new.season.dat)), y=new.season.dat$TotILI/new.season.dat$TotPat)) + 
+  theme_bw() + labs(y="Percentage of ILI Patients", x="Time") + 
+  geom_ribbon(data=rbind(preds1, preds2), aes(x=week, ymin=lower, ymax = upper, fill=num.harmonic), alpha=0.25) + 
+  geom_line(data=rbind(preds1, preds2), aes(x=week, y=est, color=num.harmonic))
+
+@
 
 
 \end{document}

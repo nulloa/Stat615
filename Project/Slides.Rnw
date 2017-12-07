@@ -1,0 +1,364 @@
+\documentclass[pdf]{beamer}
+\usetheme{Copenhagen}
+%\usetheme{AnnArbor}
+\usecolortheme{beaver}
+
+\usepackage{graphicx, copyrightbox, bm, amsmath,verbatim}
+\usepackage{booktabs} % Allows the use of \toprule, \midrule and \bottomrule in tables
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{enumerate items}[default]
+\setbeamertemplate{enumerate subitem}{\alph{enumii}.}
+\setbeamertemplate{enumerate subsubitem}{\roman{enumiii}.}
+
+\makeatletter
+\newsavebox{\mybox}\newsavebox{\mysim}
+\newcommand{\distras}[1]{%
+  \savebox{\mybox}{\hbox{\kern3pt$\scriptstyle#1$\kern3pt}}%
+  \savebox{\mysim}{\hbox{$\sim$}}%
+  \mathbin{\overset{#1}{\kern\z@\resizebox{\wd\mybox}{\ht\mysim}{$\sim$}}}%
+}
+\makeatother
+%----------------------------------------------------------------------------------------
+%	TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+\title[Stat 615]{Dynamic Linear Models and their application to Influenza Modeling} % The short title appears at the bottom of every slide, the full title is only on the title page
+
+\author{Nehemias Ulloa} % Your name
+\institute[ISU] % Your institution as it will appear on the bottom of every slide, may be shorthand to save space
+{
+Iowa State University \\ % Your institution for the title page
+\medskip
+\textit{} % Your email address
+}
+\date{\today} % Date, can be changed to a custom date
+
+\begin{document}
+\begin{frame}
+\titlepage % Print the title page as the first slide
+\end{frame}
+
+
+% \begin{frame}
+% \frametitle{Overview} % Table of contents slide, comment this block out to remove it
+% \tableofcontents % Throughout your presentation, if you choose to use \section{} and \subsection{} commands, these will automatically be printed on this slide as an overview of your presentation
+% \end{frame}
+
+
+%------------------------------------------------
+\section{Introduction}
+%------------------------------------------------
+\begin{frame}[fragile]
+\frametitle{Introduction}
+<<libraries, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE>>=
+library("ggplot2")
+library("cdcfluview")
+library("plyr")
+library("dplyr")
+library("reshape2")
+library("boot")
+library("dlm")
+library("gridExtra")
+source("../../ServerScripts/R/CreateCDCDF.R")
+@
+<<data_setup, echo=FALSE, message=FALSE, warning=FALSE>>=
+fludat <- get_flu_data(years=2010:2013)
+fludat$REGION <- as.factor(fludat$REGION)
+fludat <- dplyr::filter(fludat, REGION=="Region 9")
+names(fludat) <- tolower(names(fludat))
+fludat$time <- 1:nrow(fludat)
+flu <- as.numeric(unlist(fludat[,c("ilitotal")]))/as.numeric(unlist(fludat[,c("total patients")]))
+fluts <- ts(fludat$ilitotal, start=c(2010, 40), frequency = 52)
+@
+\begin{itemize}
+\item Influenza: Contagious illness which attacks the respiratory system
+\item Best case scenario, it is a minor inconvenience. Worst case scenario, it can lead to serious health problems 
+\item Centers for Disease Control and Prevention (CDC) interested in understanding influenza 
+\item A goal of the research is trying to model and predict different facets of influenza outbreaks 
+\end{itemize}
+\end{frame}
+
+
+%------------------------------------------------
+\section{Data}
+%------------------------------------------------
+\begin{frame}[fragile]
+\frametitle{Data}
+\begin{itemize}
+\item Data for this project comes from the CDC 
+\item Doctors turn in the number of of influenza-like patients they see in their office and the total number of patients seen in the week
+\item Weekly data aggregated into regions depending by location 
+\item Focused on Region 9: Arizona, California, Hawaii, and Nevada and years 2010-2014
+\item Transformed by taking the logit of data
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Region 9 Data}
+<<data_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="", fig.height=3.5>>=
+ggplot(fludat) + geom_point(aes(x=time, y=logit(ilitotal/`total patients`))) + labs(y="Percentage of ILI Patients", x="Time") + theme_bw()
+@
+\end{frame}
+
+
+
+
+
+
+%------------------------------------------------
+\section{Methodology}
+%------------------------------------------------
+\begin{frame}[fragile]
+\frametitle{Methodology}
+DLMs can be broken up into a composition of multiple componant where each piece models a specific structure. Denote the overall DLM to be $y_t$ then it can be composed as follows:
+
+\begin{equation}
+y_t = y_t^{(1)} + y_t^{(2)}
+\end{equation}
+
+where $y_t^{(1)}$ is the component corresponding to the modeling of the mean and $y_t^{(2)}$ is the component dealing with the seasonal effects.
+
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Model}
+Formally, the DLM is written:
+\tiny{
+\begin{align}
+y_t      &= F_t \theta_t + v_t     &v_t  &\sim N(0, V) \nonumber \\
+\theta_t &= G_t \theta_t + w_t     &w_t  &\sim N(0, W) \nonumber \\
+\theta_0 &\sim N(m_0, C_0)         &     &                    
+\end{align}
+ where
+\begin{align*}
+F_t &= F = 
+\begin{bmatrix}
+1 & 0 & 1 & 0
+\end{bmatrix} &
+\theta_t &= (\mu_t,\beta_t,S_1(t),S_1^*(t))^T \\
+G_t &= G = 
+\left[ 
+\begin{array}{c@{}c}
+ \left[\begin{array}{cc}
+         1 & 1 \\
+         0 & 1 \\
+  \end{array}\right] & \mathbf{0} \\
+  \mathbf{0} & \left[\begin{array}{cc}
+                        cos(\omega_1) & sin(\omega_1) \\
+                        -sin(\omega_1) & cos(\omega_1) \\
+                      \end{array}\right] \\
+\end{array}\right]  &
+V &= \sigma^2  &\\
+W &= 
+\left[ 
+\begin{array}{c@{}c}
+ \left[\begin{array}{cc}
+         0 & 0 \\
+         0 & \sigma^2_{\beta} \\
+  \end{array}\right] & \mathbf{0} \\
+  \mathbf{0} & \left[\begin{array}{cc}
+                        0 & 0 \\
+                        0 & 0 \\
+                      \end{array}\right] \\
+\end{array}\right] &  &
+\end{align*}
+where $t \in (1, \Sexpr{length(flu)})$.}
+\end{frame}
+
+
+
+\begin{frame}[fragile]
+\frametitle{Variance parameters}
+\begin{itemize}
+\item In addition to states, interested in $\sigma^2$ and $\sigma^2_{\beta}$
+\item Chose conjugate inverse gamma distributions as priors
+\begin{align*}
+\sigma^2         &\overset{Ind}{\sim} Inv-Gamma(2,0.007) \\
+\sigma^2_{\beta} &\overset{Ind}{\sim} Inv-Gamma(2,0.002)
+\end{align*}
+%
+\item $v_t = y_t - F \theta_t \sim N(0, V)$ and $w_t = \theta_t - G \theta_{t-1} \sim N(0, W)$ then lead to the following full conditionals:
+\begin{align}
+\sigma^2|\theta,y         &\sim Inv-Gamma(\frac{T}{2} + 2, \frac{\sum_t(y_t - F \theta_t)^2}{2} + 0.007) \label{eq:sigmafullcond} \\ 
+\sigma^2_{\beta}|\theta,y &\sim Inv-Gamma(\frac{T}{2} + 2, \frac{\sum_t(\beta_t - \beta_{t-1})^2}{2} + 0.002) \label{eq:sigmabetafullcond}
+\end{align}
+%
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Gibbs Sampler}
+Here is the Gibbs sampler used to get samples for $\theta_0, \theta_1, \cdots, \theta_{208}$, $\sigma^2$, and $\sigma^2_{\beta}$:
+%
+\begin{enumerate}
+  \item Start with initial values $\sigma^2_0$ and $\sigma^2_{\beta, 0}$ (mle values were used as starting values)
+  \item Sample $\theta_0, \theta_1, \cdots, \theta_{208}$ jointly by using backwards-forwards sampling (done via the \verb|dlmBSample| function in the \verb|dlm| package in \verb|R|)
+  \item Sample $\sigma^2$ and $\sigma^2_{\beta}$ via their full conditionals (Eq \ref{eq:sigmafullcond} and Eq \ref{eq:sigmabetafullcond}, respectively)
+\end{enumerate}
+\end{frame}
+
+
+%------------------------------------------------
+\section{Results}
+%------------------------------------------------
+\begin{frame}[fragile]
+\frametitle{Results}
+<<load_RData, echo=FALSE, message=FALSE>>=
+load("HarmLTSamples.RData")
+load("preds.RData")
+@
+
+\begin{itemize}
+\item Ran one chain, $10,000$ iterations. No burn-in.
+\item Geweke diagnostic was used to check for evidence on non-convergence
+\item Some of the $\beta$ diagnostics might be on the higher side, but they look fine for the most part
+\item Traceplots for $\sigma$ and $\sigma_{\beta}$ looked good
+\item Posterior plots for $\sigma$ and $\sigma_{\beta}$ looked good
+\item No signs of problems with non-convergence
+\end{itemize}
+
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Smoothing Plots}
+<<post_state_plots, echo=FALSE, message=FALSE, fig.cap="", fig.height=4>>=
+# Model Fits
+n <- length(flu)
+L1 <- U1 <- esttheta <- L2 <- U2 <- esttheta2 <- LT <- UT <- estT <- LT2 <- UT2 <- estT2 <- NULL
+for(i in 1:n){
+  L1[i]       <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.025)
+  U1[i]       <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.975)
+  esttheta[i] <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.5)
+  LT[i]   <- quantile(inv.logit(res1$mu[,i+1]), probs=0.025)
+  UT[i]   <- quantile(inv.logit(res1$mu[,i+1]), probs=0.975)
+  estT[i] <- quantile(inv.logit(res1$mu[,i+1]), probs=0.5)
+  L2[i]        <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.025)
+  U2[i]        <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.975)
+  esttheta2[i] <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.5)
+  LT2[i]   <- quantile(inv.logit(res2$mu[,i+1]), probs=0.025)
+  UT2[i]   <- quantile(inv.logit(res2$mu[,i+1]), probs=0.975)
+  estT2[i] <- quantile(inv.logit(res2$mu[,i+1]), probs=0.5)
+}
+
+dat1 <- data.frame(L=L1, U=U1, x=seq(1,n), ogy=(flu), est=esttheta, LT=LT, UT=UT, estT=estT, num.harmonic="1")
+dat2 <- data.frame(L=L2, U=U2, x=seq(1,n), ogy=(flu), est=esttheta2, LT=LT2, UT=UT2, estT=estT2, num.harmonic="2")
+ggplot(rbind(dat1, dat2)) + 
+  geom_ribbon(aes(x=x, ymin=L, ymax = U, fill=num.harmonic), alpha=0.75) + 
+  geom_line(aes(x=x, y=est, color=num.harmonic)) +
+  #geom_ribbon(aes(x=x, ymin=LT, ymax = UT, fill=harmonic), alpha=0.25) + 
+  #geom_line(aes(x=x, y=estT, color=harmonic)) +
+  geom_point(aes(x=x, y=ogy)) + 
+  labs(y="Percentage of ILI Patients", x="Time") + 
+  theme_bw() + facet_grid(num.harmonic~.)
+@
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Predictions}
+\begin{itemize}
+\item One of the main benefits of using DLMs is the ease of getting predictions 
+\item Predictions calculated from posterior predictive distribution $p(y_{t+1}, \theta_{t+1}|y_{1:t})$
+\item $p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t) \rightarrow p(\theta_{t+1}|\theta_t, \sigma^2_{\beta}) \rightarrow p(y_{t+1}|\theta_{t+1}, \sigma^2)$. 
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Predictions}
+
+<<prediction_plots, echo=FALSE, message=FALSE, fig.cap="", fig.height=4>>=
+
+preds1 <- data.frame(week=c(1:4), ogy=true.data, 
+                     est=c(mean(inv.logit(wk1pred1)), mean(inv.logit(wk2pred1)), 
+                           mean(inv.logit(wk3pred1)), mean(inv.logit(wk4pred1))),
+                     upper=c(quantile(inv.logit(wk1pred1), probs=0.975),quantile(inv.logit(wk2pred1), probs=0.975),
+                             quantile(inv.logit(wk3pred1), probs=0.975),quantile(inv.logit(wk4pred1), probs=0.975)),
+                     lower=c(quantile(inv.logit(wk1pred1), probs=0.025),quantile(inv.logit(wk2pred1), probs=0.025),
+                             quantile(inv.logit(wk3pred1), probs=0.025),quantile(inv.logit(wk4pred1), probs=0.025)),
+                     num.harmonic="1"
+                     )
+
+preds2 <- data.frame(week=c(1:4), ogy=true.data, 
+                     est=c(mean(inv.logit(wk1pred2)), mean(inv.logit(wk2pred2)), 
+                           mean(inv.logit(wk3pred2)), mean(inv.logit(wk4pred2))),
+                     upper=c(quantile(inv.logit(wk1pred2), probs=0.975),quantile(inv.logit(wk2pred2), probs=0.975),
+                             quantile(inv.logit(wk3pred2), probs=0.975),quantile(inv.logit(wk4pred2), probs=0.975)),
+                     lower=c(quantile(inv.logit(wk1pred2), probs=0.025),quantile(inv.logit(wk2pred2), probs=0.025),
+                             quantile(inv.logit(wk3pred2), probs=0.025),quantile(inv.logit(wk4pred2), probs=0.025)),
+                     num.harmonic="2"
+                     )
+
+
+
+ggplot(rbind(preds1, preds2)) + 
+  geom_ribbon(aes(x=week, ymin=lower, ymax = upper, fill=num.harmonic), alpha=0.25) + 
+  geom_line(aes(x=week, y=est, color=num.harmonic)) +
+  geom_point(aes(x=week, y=(ogy))) + 
+  labs(y="Percentage of ILI Patients", x="Time") + 
+  theme_bw() + facet_grid(num.harmonic~.)
+@
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Predictions}
+
+<<pred_season_data, echo=FALSE, message=FALSE, fig.cap="", fig.height=4>>=
+new.season.dat <- subset(get_cdc_data(2014), REGION=="Region 9")
+
+ggplot() + 
+  geom_point(aes(x=c(1:nrow(new.season.dat)), y=new.season.dat$TotILI/new.season.dat$TotPat)) + 
+  theme_bw() + labs(y="Percentage of ILI Patients", x="Time") + 
+  geom_ribbon(data=rbind(preds1, preds2), aes(x=week, ymin=lower, ymax = upper, fill=num.harmonic), alpha=0.25) + 
+  geom_line(data=rbind(preds1, preds2), aes(x=week, y=est, color=num.harmonic))
+
+@
+
+\end{frame}
+
+
+
+\begin{frame}[fragile]
+\frametitle{Residuals}
+<<residual_plots, echo=FALSE, message=FALSE, fig.cap="", fig.height=4>>=
+# Model Fits
+mse1 <- data.frame(wkahead=c(1:4), mspe=c(mse1wk1, mse1wk2, mse1wk3, mse1wk4), num.harmonic="1")
+mse2 <- data.frame(wkahead=c(1:4), mspe=c(mse2wk1, mse2wk2, mse2wk3, mse2wk4), num.harmonic="2")
+ggplot(rbind(mse1, mse2)) +
+  geom_point(aes(x=wkahead, y=sqrt(mspe), color=num.harmonic)) + 
+  theme_bw() + labs(y="Residuals")
+@
+\end{frame}
+
+
+%------------------------------------------------
+\section{Summary}
+%------------------------------------------------
+\begin{frame}
+\frametitle{Summary/Future Work}
+\begin{itemize}
+\item Summary
+  \begin{itemize}
+    \item The DLM using 1 harmonic and the one usign 2 both captured data well.
+    \item Based on predictions, not much difference between 1 harmonic and 2
+  \end{itemize}
+\pause
+\item Future Work
+\begin{itemize}
+  \item Use all the data available; 
+    \begin{itemize}
+      \item All 10 regions plus national: use a seemingly unrelated time series (SUSTE) model
+      \item Using all the years available: frequency in the time series is non-constant 
+    \end{itemize}
+  \item Estimates of forecasting error other than residuals
+\end{itemize}
+\end{itemize}
+\end{frame}
+
+
+\end{document}

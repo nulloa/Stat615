@@ -59,7 +59,7 @@ fludat <- dplyr::filter(fludat, REGION=="Region 9")
 names(fludat) <- tolower(names(fludat))
 fludat$time <- 1:nrow(fludat)
 flu <- fludat$ilitotal/fludat$`total patients`
-fluts <- ts(fludat$ilitotal/fludat$`total patients`, start=c(2010, 40), frequency = 52)
+fluts <- ts(fludat$ilitotal/fludat$`total patients`, start=c(2010, 40), frequency = 32)
 @
 
 \section{Data}
@@ -149,12 +149,12 @@ To sample from the posterior of both $\theta_0, \theta_1, \cdots, \theta_{208}$,
 
 \section{Results}
 <<run_mcmc, echo=FALSE, eval=FALSE>>=
-buildFun <- function(x){ dlmModTrig(om=52, q = 1, dV = exp(x[1])) +
+buildFun <- function(x){ dlmModTrig(om=32, q = 1, dV = exp(x[1])) +
     dlmModPoly(2, dV = 0, dW = c(0, exp(x[2])), m0=rep(0,2), C0=100*diag(2)) }
 fit <- dlmMLE(logit(fluts), parm = c(1,1), build = buildFun)
 sval1 <- list(s=exp(fit$par[1]), b=exp(fit$par[2]))
 
-buildFun <- function(x){ dlmModTrig(om=52, q = 2, dV = exp(x[1])) +
+buildFun <- function(x){ dlmModTrig(om=32, q = 2, dV = exp(x[1])) +
     dlmModPoly(2, dV = 0, dW = c(0, exp(x[2])), m0=rep(0,2), C0=100*diag(2)) }
 fit <- dlmMLE(logit(fluts), parm = c(1,1), build = buildFun)
 sval2 <- list(s=exp(fit$par[1]), b=exp(fit$par[2]))
@@ -179,7 +179,7 @@ mcmc1 <- function(y, niter, sval){
   for(i in 1:niter){
     if(i%%(niter/10) == 0){print(paste(100*i/niter,"% of iterations complete", sep=""))}
     # sample theta jointly via backwards sampling
-    dlmM    <- dlm::dlmModTrig(om=52, q = 1, dV = sigma) + 
+    dlmM    <- dlm::dlmModTrig(om=32, q = 1, dV = sigma) + 
       dlm::dlmModPoly(2, dV = 0, dW = c(0, sigmab), m0=rep(0,2), C0=100*diag(2))
     FiltD   <- dlm::dlmFilter(y, dlmM)
     bsample <- dlm::dlmBSample(FiltD)
@@ -227,7 +227,7 @@ mcmc2 <- function(y, niter, sval){
   for(i in 1:niter){
     if(i%%(niter/10) == 0){print(paste(100*i/niter,"% of iterations complete", sep=""))}
     # sample theta jointly via backwards sampling
-    dlmM    <- dlm::dlmModTrig(om=52, q = 2, dV = sigma) + 
+    dlmM    <- dlm::dlmModTrig(om=32, q = 2, dV = sigma) + 
       dlm::dlmModPoly(2, dV = 0, dW = c(0, sigmab), m0=rep(0,2), C0=100*diag(2))
     FiltD   <- dlm::dlmFilter(y, dlmM)
     bsample <- dlm::dlmBSample(FiltD)
@@ -271,10 +271,10 @@ We used the constructed Gibbs sampler to obtain samples from the posterior distr
 true.data <- subset(get_cdc_data(2014), REGION=="Region 9")[1:4,]
 true.data <- (true.data$TotILI/true.data$TotPat)
 
-flu.model = DLMModTrig(om=52, q = 1, dV = 1000) + 
-  DLMModPoly(2, dV = 0, dW = c(0, 0), m0=rep(0,2), C0=100*diag(2))
-flu.model2 = DLMModTrig(om=52, q = 2, dV = 1000) + 
-  DLMModPoly(2, dV = 0, dW = c(0, 2), m0=rep(0,2), C0=100*diag(2))
+flu.model = dlmModTrig(om=52, q = 1, dV = 1000) + 
+  dlmModPoly(2, dV = 0, dW = c(0, 0), m0=rep(0,2), C0=100*diag(2))
+flu.model2 = dlmModTrig(om=52, q = 2, dV = 1000) + 
+  dlmModPoly(2, dV = 0, dW = c(0, 2), m0=rep(0,2), C0=100*diag(2))
 
 
 wk1pred1 <- wk1pred2 <- wk2pred1 <- wk2pred2 <- wk3pred1 <- wk3pred2 <- wk4pred1 <- wk4pred2 <- NULL

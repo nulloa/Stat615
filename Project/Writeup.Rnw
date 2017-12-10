@@ -5,7 +5,7 @@
 \usepackage{amsmath,amssymb,mathrsfs,fancyhdr,syntonly,lastpage,hyperref,enumitem,graphicx,setspace,multicol}
 \usepackage[colorinlistoftodos]{todonotes}
 
-\title{Bayesian Dynamic Linear Models and their application to Influenza Modeling}
+\title{Dynamic Linear Models and their application to Influenza Modeling}
 
 \author{Nehemias Ulloa}
 
@@ -49,7 +49,7 @@ source("../../ServerScripts/R/CreateCDCDF.R")
 
 \section{Introduction}
 
-Influenza is a common illness which many people will deal with at some point in there lives; a contagious illness which attacks the respiratory system. At best, it is a minor inconvenience, but at worst, it can lead to serious health problems including death especially among the young, elderly and pregnant women. Vaccines are a simple and effective way of preventing the spread of influenza. The responsibility to create and distribute the vaccine for the flu falls on the Centers for Disease Control and Prevention (CDC). Because of all of this, increased effort has been placed on understanding influenza via increased monitoring and research by the CDC. One specific facet of the research is trying to model and predict different facets of influenza \cite{cdcfluweb}. This project will focus on the forcasting facet of studying influenza. 
+Influenza is a common illness which many people will deal with at some point in there lives; a contagious illness which attacks the respiratory system. At best, it is a minor inconvenience, but at worst, it can lead to serious health problems including death especially among the young, elderly and pregnant women. Vaccines are a simple and effective way of preventing the spread of influenza. The responsibility to create and distribute the vaccine for the flu falls on the Centers for Disease Control and Prevention (CDC). Because of this, much effort has been placed on understanding influenza via increased monitoring and research by the CDC. One specific goal of the research is trying to model and predict different facets of influenza \cite{cdcfluweb}. This project will focus on the forecasting facet of studying influenza. 
 
 
 <<data_setup, echo=FALSE, message=FALSE, warning=FALSE>>=
@@ -64,17 +64,17 @@ fluts <- ts(fludat$ilitotal/fludat$`total patients`, start=c(2010, 40), frequenc
 
 \section{Data}
 
-The data for this project comes from the CDC. They have setup a monitoring system in which doctors weekly turn in the number of of influenza-like patients they see in their office and the total number of patients seen. They collect other variables which will not be considered during this project. This weekly data is then aggregated into regions depending on the location of the office/clinic by taking the sum of all patients with influenza-like-illness and the sum of all patients seen. For this project, I focused on a Region 9 which covers the states of Arizona, California, Hawaii, and Nevada; I also only looked at years 2010-2014 since those years only had 52 CDC's Morbidity and Mortality Weekly Report (MMWR) weeks. Other years had 53 MMWR weeks and since I am newly exploring the use of dynamic linear models, I did not want to complicate the analysis. 
+The data for this project comes from the CDC. They have setup a monitoring system in which doctors turn in the number of of influenza-like patients they see in their office and the total number of patients seen weekly. They collect other variables which were not considered during this project. This weekly data is then aggregated into regions depending on the location of the clinic by taking the sum of all patients with influenza-like-illness and the sum of all patients seen. For this project, I focused on a Region 9 which covers the states of Arizona, California, Hawaii, and Nevada; years 2010-2014 where 2014 was used for forecasting and 2010 - 2013 were used for inference; and weeks 40-20. These years were chosen because they only had 52 CDC's Morbidity and Mortality Weekly Report (MMWR) weeks. Other years had 53 MMWR weeks and since I am newly exploring the use of dynamic linear models, I did not want to complicate the analysis by dealing with changing frequency. The weeks were chosen by the CDC; these are the weeks they focus on studying since these weeks are primarily when the flu sees movement. 
 
-For this project, I used the percent of patients with ILI symptoms. I used percentages instead of the using the raw counts of patients with ILI symptoms since it will allow me to incorporate the total amount of patients seen as well as the number of patients seen showing ILI symptoms. As can be seen in Table \ref{tab:data_summary}, the number of patients seen varies quite a bit, and the number of patients exhibiting ILI like symptoms is low relative to the total number of patients seen. This leads to a small range of percentages from $\approx 0$ to $0.05\%$. This shows the importance of using the percentages instead of the raw counts because it gives an idea of scope of ILI when making predictions.
+In this project, I used the percent of patients with ILI symptoms. Percentages were used instead of the raw counts of patients with ILI symptoms since it incorporates the total amount of patients seen as well as the number of patients seen showing ILI symptoms. As can be seen in Table \ref{tab:data_summary}, the number of patients seen varies quite a bit, and the number of patients exhibiting ILI like symptoms is low relative to the total number of patients seen. This leads to a small range of percentages from $\approx 0$ to $0.05\%$. This shows the importance of using the percentages instead of the raw counts because it gives an idea of scope of ILI when making predictions.
 
 In order to use the percentages, they needed to be transformed using a log transformation since it showed signs of non-normality. In Figure \ref{fig:qqplots}, the qqplots of the data on its original scale and the log scale are plotted side by side. The log transformation handles the issues with non-normality that the data original showed. There is still a little deviation at the tails but nothing to be too worried about.
 
-In Figure \ref{fig:data_plot}, the weekly logged percentage of patients with Influenza-like-illness symptoms are plotted against time. There an obvious seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza: the cold, winter season. It is interesting to note that the second peak is different from the other patterns. This could be due to a warmer temperature, but at least it seems that there is a definite trend from year to year.
+In Figure \ref{fig:data_plot}, the weekly logged percentage of patients with Influenza-like-illness symptoms are plotted against time. There an obvious seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza: the cold, winter season. It is interesting to note that the second peak is different from the other patterns. This could be due to a warmer temperature, but at least it seems that there is a definite seasonal trend from year to year.
 
 \section{Methodology}
 
-To analyze this data, I have decided to use a dynamic linear model (DLM). Dlm's are a common modeling choice to tackle data with a time component such as the flu data. For this project, I considered a composition of two DLMs. We can imagine that every DLM can be broken up into a composition of multiple DLMs where each piece models a specific structure \cite{dlmbook}. So if we denote the overall DLM to be $y_t$ then it can be composed as follows:
+To analyze this data, I have decided to use a dynamic linear model (DLM). DLMs are a common modeling choice to tackle data with a time component such as the flu data. In this project, I considered a composition of two DLMs. We can imagine that every DLM can be broken up into a composition of multiple DLMs where each piece models a specific structure \cite{dlmbook}. So if we denote the overall DLM to be $y_t$ then it can be composed as follows:
 
 \begin{equation}
 y_t = y_t^{(1)} + y_t^{(2)}
@@ -125,7 +125,7 @@ W &=
 \end{align*}
 where $t \in (1, \Sexpr{length(flu)})$.
 
-In order to fit this model in a completely Bayesian way, we need priors on $\sigma^2$ and $\sigma^2_{\beta}$. The priors are conjugate inverse gamma distributions such that the mean of the distributions line up with the mle's of the parameters.
+In order to fit this model in a completely Bayesian way, priors are needed on $\sigma^2$ and $\sigma^2_{\beta}$. The priors chosen are conjugate inverse gamma distributions such that the mean of the distributions line up with the mle's of the parameters.
 \begin{align*}
 \sigma^2         &\overset{Ind}{\sim} Inv-Gamma(2,0.007) \\
 \sigma^2_{\beta} &\overset{Ind}{\sim} Inv-Gamma(2,0.002)
@@ -142,7 +142,7 @@ These priors combined with the fact that $v_t = y_t - F \theta_t \sim N(0, V)$ a
 To sample from the posterior of both $\theta_0, \theta_1, \cdots, \theta_{208}$, $\sigma^2$, and $\sigma^2_{\beta}$ an MCMC was constructed via a Gibbs sampler. The steps taken in the sampler are as follows:
 \begin{enumerate}
   \item[] Start with initial values $\sigma^{2 \, (0)}$ and $\sigma^{2 \, (0)}_{\beta}$ (mle values were used as starting values)
-  \item Sample $\theta_0^{(i)}, \theta_1^{(i)}, \cdots, \theta_{208}^{(i)}$ jointly by using backwards-forwards sampling (done via the \verb|DLMBSample| function in the \verb|DLM| package in \verb|R| \cite{dlmpackage}) using $\sigma^{2 \, (i)}$ and $\sigma^{2 \, (i)}_{\beta}$
+  \item Sample $\theta_0^{(i)}, \theta_1^{(i)}, \cdots, \theta_{208}^{(i)}$ jointly by using backwards-forwards sampling (done via the \verb|DLMBSample| function in the \verb|DLM| package in \verb|R| \cite{dlmpackage}) using $\sigma^{2 \, (i-1)}$ and $\sigma^{2 \, (i-1)}_{\beta}$
   \item Sample $\sigma^{2 \, (i)}$ and $\sigma^{2 \, (i)}_{\beta}$ via their full conditionals (Eq \ref{eq:sigmafullcond} and Eq \ref{eq:sigmabetafullcond}, respectively) using $\theta_0^{(i)}, \theta_1^{(i)}, \cdots, \theta_{208}^{(i)}$
 \end{enumerate}
 
@@ -258,13 +258,11 @@ time2 <- system.time(res2 <- mcmc2(logit(fluts), 10000, sval2))
 
 save(res1, res2, file="HarmLTSamples.RData")
 @
-
-
 <<load_mcmc, echo=FALSE, message=FALSE, warning=FALSE>>=
 load("HarmLTSamples.RData")
 @
 
-We used the constructed Gibbs sampler to obtain samples from the posterior distributions of our unobserved states. These posterior distributions were then used to obtain estimates of the all the states and their $95\%$ credible intervals. One chain was run for $10,000$ iterations with no burn-in. Since only one chain was ran, the Geweke diagnostic was used to check for evidence on non-convergence. Geweke's diagnostics for the harmonics ($S_{1,0},\cdots,S_{1,208}$), the mean ($\mu_0,\cdots,\mu_{208}$), and slope ($\beta_0,\cdots,\beta_{208}$) in the linear trend components are plotted in Figure \ref{fig:gewekediag}. There are not any major causes for concern; some of the $\beta$ diagnostics might be on the higher side, but they look fine for the most part. In Figure \ref{fig:vardiag}, the traceplots for $\sigma$ and $\sigma_{\beta}$ on the top half and the posterior plots on the bottom with the priors overlay-ed as red lines. There nothing that shows problems with non-convergence.
+We used the constructed Gibbs sampler to obtain samples from the posterior distributions of our unobserved states and variance parameters. These posterior distributions were then used to obtain estimates of the all the states and their $95\%$ credible intervals. One chain was run for $10,000$ iterations with no burn-in. Since only one chain was ran, the Geweke diagnostic was used to check for evidence on non-convergence. Geweke's diagnostics for the harmonics ($S_{1,0},\cdots,S_{1,208}$), the mean ($\mu_0,\cdots,\mu_{208}$), and slope ($\beta_0,\cdots,\beta_{208}$) in the linear trend components are plotted in Figure \ref{fig:gewekediag}. There are not any major causes for concern; some of the $\beta$ diagnostics might be on the higher side, but they look fine for the most part. In Figure \ref{fig:vardiag}, the traceplots for $\sigma$ and $\sigma_{\beta}$ on the top half and the posterior plots on the bottom with the priors overlay-ed as red lines. There nothing that shows problems with non-convergence.
 
 
 <<Make_Predictions, echo=FALSE, message=FALSE, warning=FALSE, eval=FALSE>>=
@@ -329,16 +327,18 @@ load("preds.RData")
 @
 
 \section{Discussion}
-In this project, we set out to model the influenza data using a DLM and make forecasts. A DLM was fit using with 2 components: seasonal trend using harmonics and a linear trend. To decide whether the seasonal trend component should use one harmonic or two, predictions and their residuals were looked at. The predictions were calculated by making draws from the posterior predictive distribution $p(y_{t+1} | y_{1:t})$ where
+We set out to model the influenza data using a DLM and make forecasts. A DLM was fit using with 2 components: seasonal trend using harmonics and a linear trend. To decide whether the seasonal trend component should use one harmonic or two, predictions and their residuals were looked at. The predictions were calculated by making draws from the posterior predictive distribution $p(y_{t+1} | y_{1:t})$ where
 \begin{equation}
 p(y_{t+1} | y_{1:t}) = \int p(y_{t+1}|\theta_{t+1}, \sigma^2) p(\theta_{t+1}|\theta_t, \sigma^2_{\beta}) p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t) d\theta_t d\sigma^2 d\sigma^2_{\beta} \label{postpred}
 \end{equation}
 
-To get draws from Eq \ref{postpred}, the draws of $p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t)$ were taken then plugged into the evolution equation ($p(\theta_{t+1}|\theta_t, \sigma^2_{\beta})$) which was then plugged into the observation equation ($p(y_{t+1}|\theta_{t+1}, \sigma^2)$). In Figure \ref{fig:prediction_plots}, the week ahead predictions generated by the two different DLMs. Based on this graph, the predictions look as we would expect with the $95\%$ credible intervals are increasing. Although in Figure \ref{fig:pred_season_data}, when the predictions and their credible intervals are posted on the full scale of the data, the error of the predictions are put into perspective. The residual plot for the forecasts in Figure \ref{fig:residual_plots} show the same phenomena. Looking at the forecasting results, there is not much difference between the DLM using two harmonics and the DLM using one harmonic. So when a simple model preforms similar to a more complex model, the convention is to go with the simpler model; in this project, that is the DLM using one harmonic. 
+To get draws from Eq \ref{postpred}, the draws of $p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t)$ were taken then plugged into the evolution equation ($p(\theta_{t+1}|\theta_t, \sigma^2_{\beta})$) which was then plugged into the observation equation ($p(y_{t+1}|\theta_{t+1}, \sigma^2)$). 
+
+In Figure \ref{fig:prediction_plots}, the week ahead predictions generated by the two different DLMs are plotted. Based on this graph, the predictions look as we would expect with the $95\%$ credible intervals are increasing as the time forecasted grows. Due to the increased flexibility of using two harmonics, the forecasts of the DLM using two harmonics under predict the second point. The DLM with one harmonic consistently predicts higher than the DLM with two harmonics. This is highlighted in the residual plot for the forecasts, Figure \ref{fig:residual_plots}. Figure \ref{fig:pred_season_data} really puts the error of the predictions into perspective by plotting the predictions and their credible intervals on the full scale of the data. Looking at the forecasting results, there is not much difference between the DLM using two harmonics and the DLM using one harmonic. There might be an argument to say if one is more interested in the one and two week ahead predictions to use the DLM with one harmonic and otherwise go with the DLM using two harmonics though this would require more work to get an accurate estimate of the week ahead mean square prediction errors. Based off of this analysis, the difference is not major enough to warrant a claim about which DLM is better. So when a simple model preforms similar to a more complex model, the convention is to go with the simpler model; in this project, that is the DLM using one harmonic. 
 
 
 \section{Future Work}
-In this project only a small subset of the data was used. It would be beneficial to use all the data available; this would mean using the 10 regions plus national, and using all the years available. Using multiple regions could be accomplished by using a seemingly unrelated time series (SUSTE) model, but using all the years would be less obvious since the frequency in the time series is non-constant. Some years there are 52 observations per year while others there are 53 observations per year. It would also be good to get estimates of forecasting error other than residuals. This would be possible by calculating the squared prediction error of 1 step forecasts sequentially by limiting the data set one point at a time. This project gives an introduction to using DLMs on this data set, but many extensions are possible.
+This project used only a small subset of the data. It would be beneficial to use all the data available; this would mean using the 10 regions plus national, and using all the years available. Using multiple regions could be accomplished by using a seemingly unrelated time series (SUSTE) model, but using all the years would be less obvious since the frequency in the time series is non-constant. Some years there are 52 observations per year while others there are 53 observations per year. It would also be good to get estimates of forecasting error other than residuals. This would be possible by calculating the squared prediction error of 1, 2, 3, and 4 week ahead forecasts sequentially by limiting the data set one point at a time. This project gives an introduction to using DLMs on this data set, but many extensions are possible.
 
 
 %%%%%
@@ -389,7 +389,7 @@ ggplot(tmpdf, aes(sample=ili)) + stat_qq(distribution=qnorm) +
 @
 
 <<data_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the weekly percentage of patients showing Influenza-like-illness against time on the logit scale. There a clear seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza. Also the second peak is stands out from the other patterns.", fig.height=4>>=
-ggplot(fludat) + geom_point(aes(x=time, y=logit(ilitotal/`total patients`))) + labs(y="Percentage of ILI Patients", x="Time") + theme_bw()
+ggplot(fludat) + geom_point(aes(x=time, y=logit(ilitotal/`total patients`))) + labs(y="Logit Percentage of ILI Patients", x="Time") + theme_bw()
 @
 
 
@@ -433,7 +433,7 @@ grid.arrange(p1, p2, p3, layout_matrix = lay)
 @
 
 
-<<post_state_plots, echo=FALSE, message=FALSE, fig.cap="This shows the posterior (smoothing) plots for the equal-tail $95\\%$ credible interval for the states to compare using 1 or 2 harmonics. There is not much difference in features between the two models, so the simpler model (using 1 harmonic) was used in this project.", fig.height=6>>=
+<<post_state_plots, echo=FALSE, message=FALSE, fig.cap="This shows the posterior (smoothing) plots for the equal-tail $95\\%$ credible interval for the states to compare using one or two harmonics. There is not much difference in features between the two models, so the simpler model (using 1 harmonic) was used in this project.", fig.height=6>>=
 # Model Fits
 n <- length(flu)
 L1 <- U1 <- esttheta <- L2 <- U2 <- esttheta2 <- LT <- UT <- estT <- LT2 <- UT2 <- estT2 <- NULL
@@ -465,7 +465,7 @@ ggplot(rbind(dat1, dat2)) +
 @
 
 
-<<residual_plots, echo=FALSE, message=FALSE, fig.cap="This is a residual plot for the forecasts made using the two DLMs. Both DLMs preform about the same in all predictions.", fig.height=4>>=
+<<residual_plots, echo=FALSE, message=FALSE, fig.cap="This is a residual plot for the forecasts made using the two DLMs. There is not a lot of difference overall in the DLM's prediction preformance. There may be an argument for using a DLM with one harmonic for the first two week ahead predictions and a DLM with two harmonics for the three and four week ahead predictions.", fig.height=4>>=
 # Model Fits
 mse1 <- data.frame(wkahead=c(1:4), mspe=c(mse1wk1, mse1wk2, mse1wk3, mse1wk4), num.harmonic="1")
 mse2 <- data.frame(wkahead=c(1:4), mspe=c(mse2wk1, mse2wk2, mse2wk3, mse2wk4), num.harmonic="2")
@@ -474,7 +474,7 @@ ggplot(rbind(mse1, mse2)) +
   theme_bw() + labs(y="Residuals")
 @
 
-<<prediction_plots, echo=FALSE, message=FALSE, fig.cap="This plot is of the week ahead predictions generated by the two different DLMs. On this scale, the predictions seem to be alright but the $95\\%$ credible intervals are increasing although this is what we would expect.", fig.height=6>>=
+<<prediction_plots, echo=FALSE, message=FALSE, fig.cap="This plot is of the week ahead predictions generated by the two different DLMs. On this scale, the predictions seem to be alright but the $95\\%$ credible intervals are increasing although this is what we would expect. Note that the DLM with one harmonic consistently predicts higher precentages than the DLM with two harmonics.", fig.height=6>>=
 
 preds1 <- data.frame(week=c(1:4), ogy=true.data, 
                      est=c(mean(inv.logit(wk1pred1)), mean(inv.logit(wk2pred1)), 

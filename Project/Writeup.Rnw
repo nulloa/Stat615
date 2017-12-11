@@ -166,7 +166,7 @@ W &=
                       \end{array}\right] \\
 \end{array}\right]
 \end{align*}
-where $y_t$ is the observation at time $t$ and $t \in (1, \Sexpr{length(flu)})$.
+where $y_t$ is the observation at time $t$, $t \in (1, \Sexpr{length(flu)})$, $m0$ is a vector fo zeros, and $C0$ is the identity matrix times $10,000$.
 
 In order to fit this model in a completely Bayesian way, priors are needed on $\sigma^2$ and $\sigma^2_{\beta}$. The priors chosen are conjugate inverse gamma distributions such that the mean of the distributions line up with the mle's of the parameters.
 \begin{align*}

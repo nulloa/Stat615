@@ -68,9 +68,52 @@ The data for this project comes from the CDC. They have setup a monitoring syste
 
 In this project, I used the percent of patients with ILI symptoms. Percentages were used instead of the raw counts of patients with ILI symptoms since it incorporates the total amount of patients seen as well as the number of patients seen showing ILI symptoms. As can be seen in Table \ref{tab:data_summary}, the number of patients seen varies quite a bit, and the number of patients exhibiting ILI like symptoms is low relative to the total number of patients seen. This leads to a small range of percentages from $\approx 0$ to $0.05\%$. This shows the importance of using the percentages instead of the raw counts because it gives an idea of scope of ILI when making predictions.
 
+<<data_summary_table, echo=FALSE, message=FALSE, warning=FALSE, results="asis">>=
+sumdf <- data.frame(ili = fludat$ilitotal,
+                    tot = fludat$`total patients`,
+                    pili = fludat$ilitotal/fludat$`total patients`
+                    )
+names(sumdf) <- c("Num of ILI", "Total Patients", "Percent ILI")
+tmp <- melt(sumdf) %>%
+  group_by(variable) %>%
+  summarise(Min. = min(value),
+            Mean = mean(value),
+            Sd   = sd(value),
+            Max. = max(value))
+tmp <- data.frame(tmp)
+names(tmp)[1] <- "Var."
+print(xtable::xtable(tmp, caption = 'Summary statistics for the total number of patients seen with ILI symptoms, the total number of patients seen, and the percentage of patients with ILI symptoms. There is large variation in the total number of patients seen, and there is a pretty big difference in the number of patients with ILI symptoms and the total number of patients seen which leads to small percentages.', label='tab:data_summary'))
+@
+
+
 In order to use the percentages, they needed to be transformed using a log transformation since it showed signs of non-normality. In Figure \ref{fig:qqplots}, the qqplots of the data on its original scale and the log scale are plotted side by side. The log transformation handles the issues with non-normality that the data original showed. There is still a little deviation at the tails but nothing to be too worried about.
 
+<<qqplots, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the qqplots of both the data on its original scale and the logit transformed data. The log transformation on the percentage of patients seen showing ILI symptoms takes cares of problem of non-normality.", fig.height=4>>=
+tmpdf <- data.frame(ili=c(flu, logit(flu)),
+                    transf = c(rep("Original", length(flu)), rep("Logit", length(flu))))
+
+intsl <- tmpdf %>% group_by(transf) %>%
+  summarize(q25    = quantile(ili,0.25),
+            q75    = quantile(ili,0.75),
+            norm25 = qnorm( 0.25),
+            norm75 = qnorm( 0.75),
+            slope  = (q25 - q75) / (norm25 - norm75),
+            int    = q25 - slope * norm25) %>%
+  select(transf, slope, int)
+
+ggplot(tmpdf, aes(sample=ili)) + stat_qq(distribution=qnorm) + 
+           geom_abline(data=intsl, aes(intercept=int, slope=slope), col="black") +
+           facet_wrap(~transf, nrow=1, scales="free") + ylab("ILI") 
+
+
+@
+
 In Figure \ref{fig:data_plot}, the weekly logged percentage of patients with Influenza-like-illness symptoms are plotted against time. There an obvious seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza: the cold, winter season. It is interesting to note that the second peak is different from the other patterns. This could be due to a warmer temperature, but at least it seems that there is a definite seasonal trend from year to year.
+
+<<data_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the weekly percentage of patients showing Influenza-like-illness against time on the logit scale. There a clear seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza. Also the second peak is stands out from the other patterns.", fig.height=4>>=
+ggplot(fludat) + geom_point(aes(x=time, y=logit(ilitotal/`total patients`))) + labs(y="Logit Percentage of ILI Patients", x="Time") + theme_bw()
+@
+
 
 \section{Methodology}
 
@@ -123,7 +166,7 @@ W &=
                       \end{array}\right] \\
 \end{array}\right]
 \end{align*}
-where $t \in (1, \Sexpr{length(flu)})$.
+where $y_t$ is the observation at time $t$ and $t \in (1, \Sexpr{length(flu)})$.
 
 In order to fit this model in a completely Bayesian way, priors are needed on $\sigma^2$ and $\sigma^2_{\beta}$. The priors chosen are conjugate inverse gamma distributions such that the mean of the distributions line up with the mle's of the parameters.
 \begin{align*}
@@ -261,8 +304,82 @@ save(res1, res2, file="HarmLTSamples.RData")
 <<load_mcmc, echo=FALSE, message=FALSE, warning=FALSE>>=
 load("HarmLTSamples.RData")
 @
+<<gewekediag, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="This histogram shows the Geweke diagnostics for all the harmonics ($S_{1,0},\\cdots,S_{1,208}$), the mean ($\\mu_{0},\\cdots,\\mu_{208}$), and slope ($\\beta_0,\\cdots,\\beta_{208}$) in the linear trend components.", fig.height=4>>=
+# Geweke Diagnostics
+gd <- data.frame(Harmonic1a=as.numeric(coda::geweke.diag(coda::mcmc(res1$harmonic1a))$z),
+                 mu=as.numeric(coda::geweke.diag(coda::mcmc(res1$mu))$z),
+                 beta=as.numeric(coda::geweke.diag(coda::mcmc(res1$beta))$z))
+mgd <- melt(gd)
+ggplot(mgd) + geom_histogram(aes(x=value)) + facet_wrap(~variable) + theme_bw()
+@
 
-We used the constructed Gibbs sampler to obtain samples from the posterior distributions of our unobserved states and variance parameters. These posterior distributions were then used to obtain estimates of the all the states and their $95\%$ credible intervals. One chain was run for $10,000$ iterations with no burn-in. Since only one chain was ran, the Geweke diagnostic was used to check for evidence on non-convergence. Geweke's diagnostics for the harmonics ($S_{1,0},\cdots,S_{1,208}$), the mean ($\mu_0,\cdots,\mu_{208}$), and slope ($\beta_0,\cdots,\beta_{208}$) in the linear trend components are plotted in Figure \ref{fig:gewekediag}. There are not any major causes for concern; some of the $\beta$ diagnostics might be on the higher side, but they look fine for the most part. In Figure \ref{fig:vardiag}, the traceplots for $\sigma$ and $\sigma_{\beta}$ on the top half and the posterior plots on the bottom with the priors overlay-ed as red lines. There nothing that shows problems with non-convergence.
+We used the constructed Gibbs sampler to obtain samples from the posterior distributions of our unobserved states and variance parameters. These posterior distributions were then used to obtain estimates of the all the states and their $95\%$ credible intervals. One chain was run for $10,000$ iterations with no burn-in. Since only one chain was ran, the Geweke diagnostic was used to check for evidence on non-convergence. Geweke's diagnostics for the harmonics ($S_{1,0},\cdots,S_{1,208}$), the mean ($\mu_0,\cdots,\mu_{208}$), and slope ($\beta_0,\cdots,\beta_{208}$) in the linear trend components are plotted in Figure \ref{fig:gewekediag}. There are not any major causes for concern; some of the $\beta$ diagnostics might be on the higher side, but they look fine for the most part. 
+
+
+Figure \ref{fig:post_state_CI} plots the equal-tail $95\%$ credible interval for the estimated states ($F\\theta_t$) of the DLMs using one and two harmonics with the points lightly plotted underneath. The interval widths are mostly small and the wider intervals occur at time points where the observations deviate from the gernal trend. 
+<<post_state_CI, echo=FALSE, message=FALSE, fig.cap="This shows the equal-tail $95\\%$ credible interval for the estimated states ($F\\theta_t$) for the DLMs using one and two harmonics and points lightly plotted underneath. The intervals are fairly small in width with the wider intervals occuring when points deviate from the general trend happening at the time.", fig.height=6>>=
+# Model Fits
+n <- length(flu)
+L1 <- U1 <- esttheta <- L2 <- U2 <- esttheta2 <- LT <- UT <- estT <- LT2 <- UT2 <- estT2 <- NULL
+for(i in 1:n){
+  L1[i]       <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.025)
+  U1[i]       <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.975)
+  esttheta[i] <- quantile(inv.logit(res1$harmonic1a[,i+1] + res1$mu[,i+1]), probs=0.5)
+  LT[i]   <- quantile(inv.logit(res1$mu[,i+1]), probs=0.025)
+  UT[i]   <- quantile(inv.logit(res1$mu[,i+1]), probs=0.975)
+  estT[i] <- quantile(inv.logit(res1$mu[,i+1]), probs=0.5)
+  L2[i]        <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.025)
+  U2[i]        <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.975)
+  esttheta2[i] <- quantile(inv.logit(res2$harmonic1a[,i+1] + res2$harmonic2a[,i+1] + res2$mu[,i+1]), probs=0.5)
+  LT2[i]   <- quantile(inv.logit(res2$mu[,i+1]), probs=0.025)
+  UT2[i]   <- quantile(inv.logit(res2$mu[,i+1]), probs=0.975)
+  estT2[i] <- quantile(inv.logit(res2$mu[,i+1]), probs=0.5)
+}
+
+dat1 <- data.frame(L=L1, U=U1, x=seq(1,n), ogy=(flu), est=esttheta, LT=LT, UT=UT, estT=estT, num.harmonic="1")
+dat2 <- data.frame(L=L2, U=U2, x=seq(1,n), ogy=(flu), est=esttheta2, LT=LT2, UT=UT2, estT=estT2, num.harmonic="2")
+ggplot(rbind(dat1, dat2)) + 
+  geom_segment(aes(x=x, xend=x, y=L, yend = U, color=num.harmonic)) + 
+  #geom_line(aes(x=x, y=est, color=num.harmonic)) +
+  #geom_segment(aes(x=x, xend=x, y=LT, yend = UT, color=num.harmonic), alpha=0.25) + 
+  #geom_line(aes(x=x, y=estT, color=harmonic)) +
+  #geom_point(aes(x=x, y=est, color=num.harmonic), alpha=0.5) + 
+  labs(y="Percentage of ILI Patients", x="Time") + 
+  theme_bw() + facet_grid(num.harmonic~.)
+@
+
+
+In Figure \ref{fig:vardiag}, the traceplots for $\sigma$ and $\sigma_{\beta}$ on the top half and the posterior plots on the bottom with the priors overlay-ed as red lines. The posterior distributions look like they are mixing well and are overwhelming the prior. There nothing that shows problems with non-convergence.
+
+<<vardiag, echo=FALSE, warning=FALSE, message=FALSE, fig.cap='This plot shows the traceplots for $\\sigma$ and $\\sigma_{\\beta}$ on the top half and the posterior plots for $\\sigma$ and $\\sigma_{\\beta}$ on the bottom with the priors overlayed as red lines. There are no signs for concern; nothing that shows problems with non-convergence.', fig.height=4>>=
+# traceplots
+mphi2 <- melt(matrix(as.numeric(res2$phi[,]), ncol=2, byrow=F))
+mphi2$Var2 <- factor(mphi2$Var2)
+levels(mphi2$Var2) <- c("sigma", "sigma_beta")
+
+p1 <- ggplot(mphi2) + geom_line(aes(x=Var1, y=sqrt(value))) + facet_wrap(~Var2, scales = "free") + 
+  labs(x="Iterations", y="") + theme_bw()
+
+
+# prior to posterior plots
+d1 <- melt(data.frame(sigma=res2$phi[,1], sigma_beta=res2$phi[,2]))
+dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
+dsqrtinvgamma = function(x, a, b) dinvgamma(x^2, a, b)*2*x
+
+p2 <- ggplot(data.frame(sigma=res2$phi[,1])) + 
+  geom_histogram(aes(x = sqrt(sigma), y = ..density..), bins = 100) + 
+  stat_function(fun = dsqrtinvgamma, color = "red", args = list(a = 2, b = 0.007)) +
+  theme_bw() + labs(x="sigma", y="")
+
+p3 <- ggplot(data.frame(sigma_beta=res2$phi[,2])) + 
+  geom_histogram(aes(x = sqrt(sigma_beta), y = ..density..), bins = 100) + 
+  stat_function(fun = dsqrtinvgamma, color = "red", args = list(a = 2, b = 0.002)) +
+  theme_bw() + labs(x="sigma_beta", y="")
+
+lay <- rbind(c(1,1),
+             c(2,3))
+grid.arrange(p1, p2, p3, layout_matrix = lay)
+@
 
 
 <<Make_Predictions, echo=FALSE, message=FALSE, warning=FALSE, eval=FALSE>>=
@@ -326,114 +443,10 @@ save(wk1pred1, wk1pred2, wk2pred1, wk2pred2, wk3pred1, wk3pred2, wk4pred1, wk4pr
 load("preds.RData")
 @
 
+
 \section{Discussion}
-We set out to model the influenza data using a DLM and make forecasts. A DLM was fit using with 2 components: seasonal trend using harmonics and a linear trend. To decide whether the seasonal trend component should use one harmonic or two, predictions and their residuals were looked at. The predictions were calculated by making draws from the posterior predictive distribution $p(y_{t+1} | y_{1:t})$ where
-\begin{equation}
-p(y_{t+1} | y_{1:t}) = \int p(y_{t+1}|\theta_{t+1}, \sigma^2) p(\theta_{t+1}|\theta_t, \sigma^2_{\beta}) p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t) d\theta_t d\sigma^2 d\sigma^2_{\beta} \label{postpred}
-\end{equation}
-
-To get draws from Eq \ref{postpred}, the draws of $p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t)$ were taken then plugged into the evolution equation ($p(\theta_{t+1}|\theta_t, \sigma^2_{\beta})$) which was then plugged into the observation equation ($p(y_{t+1}|\theta_{t+1}, \sigma^2)$). 
-
-In Figure \ref{fig:prediction_plots}, the week ahead predictions generated by the two different DLMs are plotted. Based on this graph, the predictions look as we would expect with the $95\%$ credible intervals are increasing as the time forecasted grows. Due to the increased flexibility of using two harmonics, the forecasts of the DLM using two harmonics under predict the second point. The DLM with one harmonic consistently predicts higher than the DLM with two harmonics. This is highlighted in the residual plot for the forecasts, Figure \ref{fig:residual_plots}. Figure \ref{fig:pred_season_data} really puts the error of the predictions into perspective by plotting the predictions and their credible intervals on the full scale of the data. Looking at the forecasting results, there is not much difference between the DLM using two harmonics and the DLM using one harmonic. There might be an argument to say if one is more interested in the one and two week ahead predictions to use the DLM with one harmonic and otherwise go with the DLM using two harmonics though this would require more work to get an accurate estimate of the week ahead mean square prediction errors. Based off of this analysis, the difference is not major enough to warrant a claim about which DLM is better. So when a simple model preforms similar to a more complex model, the convention is to go with the simpler model; in this project, that is the DLM using one harmonic. 
-
-
-\section{Future Work}
-This project used only a small subset of the data. It would be beneficial to use all the data available; this would mean using the 10 regions plus national, and using all the years available. Using multiple regions could be accomplished by using a seemingly unrelated time series (SUSTE) model, but using all the years would be less obvious since the frequency in the time series is non-constant. Some years there are 52 observations per year while others there are 53 observations per year. It would also be good to get estimates of forecasting error other than residuals. This would be possible by calculating the squared prediction error of 1, 2, 3, and 4 week ahead forecasts sequentially by limiting the data set one point at a time. This project gives an introduction to using DLMs on this data set, but many extensions are possible.
-
-
-%%%%%
-% Citations
-%%%%%
-\nocite{*}
-\bibliography{projectbib}{}
-\bibliographystyle{plain}
-
-
-\section*{Appendix: Figures, Tables and Extra Models}
-
-<<data_summary_table, echo=FALSE, message=FALSE, warning=FALSE, results="asis">>=
-sumdf <- data.frame(ili = fludat$ilitotal,
-                    tot = fludat$`total patients`,
-                    pili = fludat$ilitotal/fludat$`total patients`
-                    )
-names(sumdf) <- c("Num of ILI", "Total Patients", "Percent ILI")
-tmp <- melt(sumdf) %>%
-  group_by(variable) %>%
-  summarise(Min. = min(value),
-            Mean = mean(value),
-            Sd   = sd(value),
-            Max. = max(value))
-tmp <- data.frame(tmp)
-names(tmp)[1] <- "Var."
-print(xtable::xtable(tmp, caption = 'Summary statistics for the total number of patients seen with ILI symptoms, the total number of patients seen, and the percentage of patients with ILI symptoms. There is large variation in the total number of patients seen, and there is a pretty big difference in the number of patients with ILI symptoms and the total number of patients seen which leads to small percentages.', label='tab:data_summary'))
-@
-
-<<qqplots, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the qqplots of both the data on its original scale and the logit transformed data. The log transformation on the percentage of patients seen showing ILI symptoms takes cares of problem of non-normality.", fig.height=4>>=
-tmpdf <- data.frame(ili=c(flu, logit(flu)),
-                    transf = c(rep("Original", length(flu)), rep("Logit", length(flu))))
-
-intsl <- tmpdf %>% group_by(transf) %>%
-  summarize(q25    = quantile(ili,0.25),
-            q75    = quantile(ili,0.75),
-            norm25 = qnorm( 0.25),
-            norm75 = qnorm( 0.75),
-            slope  = (q25 - q75) / (norm25 - norm75),
-            int    = q25 - slope * norm25) %>%
-  select(transf, slope, int)
-
-ggplot(tmpdf, aes(sample=ili)) + stat_qq(distribution=qnorm) + 
-           geom_abline(data=intsl, aes(intercept=int, slope=slope), col="black") +
-           facet_wrap(~transf, nrow=1, scales="free") + ylab("ILI") 
-
-
-@
-
-<<data_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="This plot shows the weekly percentage of patients showing Influenza-like-illness against time on the logit scale. There a clear seasonal pattern in the percentages. The peaks correspond to the times we normally associate with high influenza. Also the second peak is stands out from the other patterns.", fig.height=4>>=
-ggplot(fludat) + geom_point(aes(x=time, y=logit(ilitotal/`total patients`))) + labs(y="Logit Percentage of ILI Patients", x="Time") + theme_bw()
-@
-
-
-<<gewekediag, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="This histogram shows the Geweke diagnostics for all the harmonics ($S_{1,0},\\cdots,S_{1,208}$), the mean ($\\mu_{0},\\cdots,\\mu_{208}$), and slope ($\\beta_0,\\cdots,\\beta_{208}$) in the linear trend components.", fig.height=4>>=
-# Geweke Diagnostics
-gd <- data.frame(Harmonic1a=as.numeric(coda::geweke.diag(coda::mcmc(res1$harmonic1a))$z),
-                 mu=as.numeric(coda::geweke.diag(coda::mcmc(res1$mu))$z),
-                 beta=as.numeric(coda::geweke.diag(coda::mcmc(res1$beta))$z))
-mgd <- melt(gd)
-ggplot(mgd) + geom_histogram(aes(x=value)) + facet_wrap(~variable) + theme_bw()
-@
-
-<<vardiag, echo=FALSE, warning=FALSE, message=FALSE, fig.cap='This plot shows the traceplots for $\\sigma$ and $\\sigma_{\\beta}$ on the top half and the posterior plots for $\\sigma$ and $\\sigma_{\\beta}$ on the bottom with the priors overlayed as red lines. There are no signs for concern; nothing that shows problems with non-convergence.', fig.height=4>>=
-# traceplots
-mphi2 <- melt(matrix(as.numeric(res2$phi[,]), ncol=2, byrow=F))
-mphi2$Var2 <- factor(mphi2$Var2)
-levels(mphi2$Var2) <- c("sigma", "sigma_beta")
-
-p1 <- ggplot(mphi2) + geom_line(aes(x=Var1, y=sqrt(value))) + facet_wrap(~Var2, scales = "free") + 
-  labs(x="Iterations", y="") + theme_bw()
-
-
-# prior to posterior plots
-d1 <- melt(data.frame(sigma=res2$phi[,1], sigma_beta=res2$phi[,2]))
-dinvgamma = function(x, a, b) dgamma(1/x,a,b)/x^2
-dsqrtinvgamma = function(x, a, b) dinvgamma(x^2, a, b)*2*x
-
-p2 <- ggplot(data.frame(sigma=res2$phi[,1])) + 
-  geom_histogram(aes(x = sqrt(sigma), y = ..density..), bins = 100) + 
-  stat_function(fun = dsqrtinvgamma, color = "red", args = list(a = 2, b = 0.007)) +
-  theme_bw() + labs(x="sigma", y="")
-
-p3 <- ggplot(data.frame(sigma_beta=res2$phi[,2])) + 
-  geom_histogram(aes(x = sqrt(sigma_beta), y = ..density..), bins = 100) + 
-  stat_function(fun = dsqrtinvgamma, color = "red", args = list(a = 2, b = 0.002)) +
-  theme_bw() + labs(x="sigma_beta", y="")
-
-lay <- rbind(c(1,1),
-             c(2,3))
-grid.arrange(p1, p2, p3, layout_matrix = lay)
-@
-
-
-<<post_state_plots, echo=FALSE, message=FALSE, fig.cap="This shows the posterior (smoothing) plots for the equal-tail $95\\%$ credible interval for the states to compare using one or two harmonics. There is not much difference in features between the two models, so the simpler model (using 1 harmonic) was used in this project.", fig.height=6>>=
+We set out to model the influenza data using a DLM and make forecasts. A DLM was fit using with 2 components: seasonal trend using harmonics and a linear trend. The posterior (smoothing) plots for the equal-tail $95\%$ credible interval for the states to compare using one or two harmonics are plotted in Figure \ref{fig:post_state_plots}. There is not much difference in the smoothed estimates between the two models so to decide whether the seasonal trend component should use one harmonic or two, predictions and their residuals were looked at.
+<<post_state_plots, echo=FALSE, message=FALSE, fig.cap="This shows the posterior (smoothing) plots for the equal-tail $95\\%$ credible interval for the states to compare using one or two harmonics. There is not much difference in features between the two models.", fig.height=6>>=
 # Model Fits
 n <- length(flu)
 L1 <- U1 <- esttheta <- L2 <- U2 <- esttheta2 <- LT <- UT <- estT <- LT2 <- UT2 <- estT2 <- NULL
@@ -465,14 +478,12 @@ ggplot(rbind(dat1, dat2)) +
 @
 
 
-<<residual_plots, echo=FALSE, message=FALSE, fig.cap="This is a residual plot for the forecasts made using the two DLMs. There is not a lot of difference overall in the DLM's prediction preformance. There may be an argument for using a DLM with one harmonic for the first two week ahead predictions and a DLM with two harmonics for the three and four week ahead predictions.", fig.height=4>>=
-# Model Fits
-mse1 <- data.frame(wkahead=c(1:4), mspe=c(mse1wk1, mse1wk2, mse1wk3, mse1wk4), num.harmonic="1")
-mse2 <- data.frame(wkahead=c(1:4), mspe=c(mse2wk1, mse2wk2, mse2wk3, mse2wk4), num.harmonic="2")
-ggplot(rbind(mse1, mse2)) +
-  geom_point(aes(x=wkahead, y=sqrt(mspe), color=num.harmonic)) + 
-  theme_bw() + labs(y="Residuals")
-@
+The predictions were calculated by making draws from the posterior predictive distribution $p(y_{t+1} | y_{1:t})$ where
+\begin{equation}
+p(y_{t+1} | y_{1:t}) = \int p(y_{t+1}|\theta_{t+1}, \sigma^2) p(\theta_{t+1}|\theta_t, \sigma^2_{\beta}) p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t) d\theta_t d\sigma^2 d\sigma^2_{\beta} \label{postpred}
+\end{equation}
+
+To get draws from Eq \ref{postpred}, the draws of $p(\theta_t, \sigma^2, \sigma_{\beta}^2 | y_t)$ were taken then plugged into the evolution equation ($p(\theta_{t+1}|\theta_t, \sigma^2_{\beta})$) which was then plugged into the observation equation ($p(y_{t+1}|\theta_{t+1}, \sigma^2)$). 
 
 <<prediction_plots, echo=FALSE, message=FALSE, fig.cap="This plot is of the week ahead predictions generated by the two different DLMs. On this scale, the predictions seem to be alright but the $95\\%$ credible intervals are increasing although this is what we would expect. Note that the DLM with one harmonic consistently predicts higher precentages than the DLM with two harmonics.", fig.height=6>>=
 
@@ -507,6 +518,18 @@ ggplot(rbind(preds1, preds2)) +
 @
 
 
+In Figure \ref{fig:prediction_plots}, the week ahead predictions generated by the two different DLMs are plotted. Based on this graph, the predictions look as we would expect with the $95\%$ credible intervals are increasing as the time forecasted grows. Due to the increased flexibility of using two harmonics, the forecasts of the DLM using two harmonics under predict the second point. The DLM with one harmonic consistently predicts higher than the DLM with two harmonics. This is highlighted in the residual plot for the forecasts, Figure \ref{fig:residual_plots}. 
+<<residual_plots, echo=FALSE, message=FALSE, fig.cap="This is a residual plot for the forecasts made using the two DLMs. There is not a lot of difference overall in the DLM's prediction preformance. There may be an argument for using a DLM with one harmonic for the first two week ahead predictions and a DLM with two harmonics for the three and four week ahead predictions.", fig.height=4>>=
+# Model Fits
+mse1 <- data.frame(wkahead=c(1:4), mspe=c(mse1wk1, mse1wk2, mse1wk3, mse1wk4), num.harmonic="1")
+mse2 <- data.frame(wkahead=c(1:4), mspe=c(mse2wk1, mse2wk2, mse2wk3, mse2wk4), num.harmonic="2")
+ggplot(rbind(mse1, mse2)) +
+  geom_point(aes(x=wkahead, y=sqrt(mspe), color=num.harmonic)) + 
+  theme_bw() + labs(y="Residuals")
+@
+Figure \ref{fig:pred_season_data} really puts the error of the predictions into perspective by plotting the predictions and their credible intervals on the full scale of the data. Looking at the forecasting results, there is not much difference between the DLM using two harmonics and the DLM using one harmonic. There might be an argument to say if one is more interested in the one and two week ahead predictions to use the DLM with one harmonic and otherwise go with the DLM using two harmonics though this would require more work to get an accurate estimate of the week ahead mean square prediction errors. Based off of this analysis, the difference is not major enough to warrant a claim about which DLM is better. So when a simple model preforms similar to a more complex model, the convention is to go with the simpler model; in this project, that is the DLM using one harmonic. 
+
+
 <<pred_season_data, echo=FALSE, message=FALSE, fig.cap="This plot of the week ahead predictions generated by the two different DLMs has been overlayed on the data for the predicted 2014 season. This scale highlights the errors in the predictions.", fig.height=6>>=
 new.season.dat <- subset(get_cdc_data(2014), REGION=="Region 9")
 
@@ -517,6 +540,19 @@ ggplot() +
   geom_line(data=rbind(preds1, preds2), aes(x=week, y=est, color=num.harmonic))
 
 @
+
+
+
+\section{Future Work}
+This project used only a small subset of the data. It would be beneficial to use all the data available; this would mean using the 10 regions plus national, and using all the years available. Using multiple regions could be accomplished by using a seemingly unrelated time series (SUSTE) model, but using all the years would be less obvious since the frequency in the time series is non-constant. Some years there are 52 observations per year while others there are 53 observations per year. It would also be good to get estimates of forecasting error other than residuals. This would be possible by calculating the squared prediction error of 1, 2, 3, and 4 week ahead forecasts sequentially by limiting the data set one point at a time. This project gives an introduction to using DLMs on this data set, but many extensions are possible.
+
+
+%%%%%
+% Citations
+%%%%%
+\nocite{*}
+\bibliography{projectbib}{}
+\bibliographystyle{plain}
 
 
 \end{document}
